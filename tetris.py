@@ -83,6 +83,7 @@ assert len(COLORS) == len(LIGHTCOLORS) # each color must have light color
 
 class GameState:
     def __init__(self, board_size=(10,20), only_squares=False):
+        # self.x_board, self.y_board = board_size
         self.Y_BOARD, self.X_BOARD = board_size
         if only_squares:
             self.TETRIMINOS = {'O': O_SHAPE}
@@ -191,28 +192,35 @@ class GameState:
         return (self.Y_SCREEN, self.X_SCREEN, 3)
 
 class TetrisEnv(gym.Env):
-    def __init__(self, board_size=(20,10), grouped_actions=False, only_squares=False):
+    def __init__(self, board_size=(20,10), grouped_actions=False, only_squares=False, no_rotations=False):
         super(TetrisEnv, self).__init__()
         self.state = GameState(board_size, only_squares)
-        self._action_set = [a for a in range(self.state.X_BOARD * 4)]
-        # setup stuff for gym
-        self.action_space = spaces.Discrete(self.state.X_BOARD * 4)
-        # self.action_space = spaces.MultiDiscrete([self.state.X_BOARD, 4])
         self.observation_space = spaces.Box(low=0, high=255, shape=self.state.screen_dim(), dtype=np.uint8)
+        self.no_rotations = no_rotations
+        if no_rotations:
+            self._action_set = [a for a in range(self.state.X_BOARD)]
+            self.action_space = spaces.Discrete(self.state.X_BOARD)
+        else:
+            self._action_set = [a for a in range(self.state.X_BOARD * 4)]
+            self.action_space = spaces.Discrete(self.state.X_BOARD * 4)
         # other stuff
         self.viewer = None
 
     def reset(self):
         self.state.reset()
-        state = self.state.get_board()
+        state = self.state.get_board(render=True)
         return state
 
     def step(self, action=None, rand_action=False):
         if rand_action and action is None:
             action = random.choice(self._action_set)
         if action is not None:
-            x_index = int(action/4)
-            rotation = action % 4
+            if self.no_rotations:
+                x_index = action
+                rotation = 0
+            else:
+                x_index = int(action/4)
+                rotation = action % 4
         else:
             print("Error!")
             return
@@ -223,7 +231,7 @@ class TetrisEnv(gym.Env):
             self.state.cycle_pieces()
         else:
             reward = 0
-        state = self.state.get_board()
+        state = self.state.get_board(render=True)
         return state, reward, not placed_success, {}
 
     def render(self, method='image', wait_sec=0):
@@ -239,6 +247,10 @@ class TetrisEnv(gym.Env):
             print(self.state.get_board(render=False))
         elif method =='rbg_array':
             return image
+
+    def close_render(self):
+        if self.viewer is not None and self.viewer.isopen:
+            self.viewer.close()
 
     def measure_step_time(self, warmup=30, steps=1000, verbose=False):
         t = time.perf_counter()
