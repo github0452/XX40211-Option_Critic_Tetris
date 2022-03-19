@@ -182,8 +182,10 @@ class GameState:
         self.score += additional_score
         return additional_score
 
-    def get_board(self, render=True):
+    def get_board(self, render=True, put_channels_first=False):
         if render:
+            if put_channels_first:
+                return np.moveaxis(self.render_board, -1, 0)
             return self.render_board
         else:
             return self.mini_board
@@ -208,7 +210,7 @@ class TetrisEnv(gym.Env):
 
     def reset(self):
         self.state.reset()
-        state = self.state.get_board(render=True)
+        state = self.state.get_board(render=True, put_channels_first=True)
         return state
 
     def step(self, action=None, rand_action=False):
@@ -231,7 +233,7 @@ class TetrisEnv(gym.Env):
             self.state.cycle_pieces()
         else:
             reward = 0
-        state = self.state.get_board(render=True)
+        state = self.state.get_board(render=True, put_channels_first=True)
         return state, reward, not placed_success, {}
 
     def render(self, method='image', wait_sec=0):
