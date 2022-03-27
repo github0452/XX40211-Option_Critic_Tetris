@@ -184,14 +184,14 @@ class GameState:
 
     def get_board(self, render=True, put_channels_first=False):
         if render:
-            if put_channels_first:
-                return np.moveaxis(self.render_board, -1, 0)
-            return self.render_board
+            # if put_channels_first:
+            return np.moveaxis(self.render_board, -1, 0)
+            # return self.render_board
         else:
             return self.mini_board
 
     def screen_dim(self):
-        return (self.Y_SCREEN, self.X_SCREEN, 3)
+        return (3, self.Y_SCREEN, self.X_SCREEN)
 
 class TetrisEnv(gym.Env):
     def __init__(self, board_size=(20,10), grouped_actions=False, only_squares=False, no_rotations=False):
@@ -236,19 +236,21 @@ class TetrisEnv(gym.Env):
         state = self.state.get_board(render=True, put_channels_first=True)
         return state, reward, not placed_success, {}
 
-    def render(self, method='image', wait_sec=0):
+    def render(self, mode='image', wait_sec=0):
         image = self.state.get_board(render=True)
-        if method =='image':
+        if mode =='image':
             if self.viewer is None:
                 self.viewer = rendering.SimpleImageViewer()
             self.viewer.imshow(image)
             time.sleep(wait_sec)
-        elif method == 'print':
+        elif mode == 'print':
             print("Curr piece:", self.curr_piece, ", next piece:", self.next_piece)
             print("Game over:", self.game_over)
             print(self.state.get_board(render=False))
-        elif method =='rbg_array':
+        elif mode =='rbg_array' or mode == 'human':
             return image
+        else:
+            print(mode)
 
     def close_render(self):
         if self.viewer is not None and self.viewer.isopen:
