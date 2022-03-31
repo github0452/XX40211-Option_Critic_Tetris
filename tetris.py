@@ -8,6 +8,7 @@ import time
 class TetrisPiece:
     def __init__(self, center, template):
         self.template = np.array([list(row) for row in template], dtype=np.int8).astype(bool)
+        # self.template = np.flip(self.template)
         self.cntr = center
         self.y_dim, self.x_dim = self.template.shape
 
@@ -82,7 +83,7 @@ LIGHTCOLORS = (LIGHTBLUE, LIGHTGREEN, LIGHTRED, LIGHTYELLOW)
 assert len(COLORS) == len(LIGHTCOLORS) # each color must have light color
 
 class GameState:
-    def __init__(self, board_size=(10,20), only_squares=False):
+    def __init__(self, board_size=(20,10), only_squares=False):
         # self.x_board, self.y_board = board_size
         self.Y_BOARD, self.X_BOARD = board_size
         if only_squares:
@@ -158,24 +159,31 @@ class GameState:
                     pixelx, pixely = (x+adj_x)*self.BOXSIZE, (y+adj_y)*self.BOXSIZE
                     self.render_board[pixely+1:self.BOXSIZE+pixely, pixelx+1:self.BOXSIZE+pixelx] = COLORS[self.COLOR]
                     self.render_board[pixely+1:self.BOXSIZE-3+pixely, pixelx+1:self.BOXSIZE-3+pixelx] = LIGHTCOLORS[self.COLOR]
-        return True, adj_y-y
+        return True, adj_y-y+piece.y_dim-1
 
     def remove_completed_lines(self):
-        completedLines = [all(row) for row in self.mini_board]
+        completedLines = np.all(self.mini_board, axis=1)
         num_removed_lines = sum(completedLines)
-        self.mini_board = np.delete(self.mini_board, completedLines, axis=0)
-        self.mini_board = np.insert(self.mini_board, 0, np.zeros((num_removed_lines,self.X_BOARD), dtype=bool), axis=0)
+        if num_removed_lines != 0:
+            # update miniboard
+            self.mini_board = np.delete(self.mini_board, completedLines, axis=0)
+            self.mini_board = np.insert(self.mini_board, 0, np.zeros((num_removed_lines,self.X_BOARD), dtype=bool), axis=0)
+            # update rendered board
+            renderedCompletedLines = np.repeat(completedLines, np.repeat(self.BOXSIZE, self.Y_BOARD), axis=0)
+            num_rendered_completed_lines = sum(renderedCompletedLines)
+            self.render_board = np.delete(self.render_board, renderedCompletedLines, axis=0)
+            self.render_board = np.insert(self.render_board, 0, np.zeros((num_rendered_completed_lines,self.X_SCREEN, 3)), axis=0)
         return num_removed_lines
 
     def calc_level(self): # calculate level based on the lines cleared
-        self.level = min(int(self.lines / 10)+1, 15)
+        self.level = min(int(self.lines / 10)+1, 10)
         return self.level
 
     def update_score(self, piece_fallen, cleared_lines):
         additional_score = 0
         self.combo = self.combo + 1 if cleared_lines > 0 else -1
         if self.combo > -1:
-            additional_score += 50 * self.COMBO_MULTI[self.combo % self.MAX_COMBO] * self.level # updating score for combos
+            additional_score += 50 * self.COMBO_MULTI[min(self.combo,self.MAX_COMBO)] * self.level # updating score for combos
         additional_score += self.LINE_MULTI[cleared_lines] * self.level  # updating score for cleared lines
         additional_score += piece_fallen # how much the piece has fallen
         additional_score += cleared_lines
@@ -233,24 +241,26 @@ class TetrisEnv(gym.Env):
             self.state.cycle_pieces()
         else:
             reward = 0
+        game_over = not placed_success
         state = self.state.get_board(render=True, put_channels_first=True)
-        return state, reward, not placed_success, {}
+        return state, reward, game_over, {}
 
-    def render(self, mode='image', wait_sec=0):
+    def render(self, mode='image', wait_sec=0, verbose=False):
         image = self.state.get_board(render=True)
         if mode =='image':
             if self.viewer is None:
                 self.viewer = rendering.SimpleImageViewer()
+            image = np.moveaxis(image, 0, -1)
             self.viewer.imshow(image)
             time.sleep(wait_sec)
-        elif mode == 'print':
-            print("Curr piece:", self.curr_piece, ", next piece:", self.next_piece)
-            print("Game over:", self.game_over)
-            print(self.state.get_board(render=False))
         elif mode =='rbg_array' or mode == 'human':
             return image
         else:
             print(mode)
+        if verbose:
+            print("Curr piece:", self.state.curr_piece, ", next piece:", self.state.next_piece)
+            print("Game over:", self.state.game_over)
+            print(self.state.get_board(render=False))
 
     def close_render(self):
         if self.viewer is not None and self.viewer.isopen:
@@ -276,12 +286,14 @@ class TetrisEnv(gym.Env):
 
 
 if __name__ == '__main__':
-    env = TetrisEnv(only_squares=False)
+    env = TetrisEnv(only_squares=True, no_rotations=True, max_steps=30)
     env.reset()
     # env.measure_step_time(verbose=True)
     env.render(wait_sec=0.3)
     for _ in range(100):
-        screen, reward, game_over, info = env.step(rand_action=True)
-        env.render(wait_sec=0.3)
-        if game_over:
-            env.reset()
+        for i in [1,3, 5, 7, 9]:
+            screen, reward, game_over, info = env.step(action=i)
+            env.render(wait_sec=1)
+            print("Reward:", reward)
+            if game_over:
+                env.reset()
