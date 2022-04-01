@@ -12,7 +12,7 @@ from option_critic import OptionCritic
 
 # checkpoint="logs/tetris_fixed/PPO/_model_50000_steps.zip"
 folder = "logs/tetris_fixed/OptionCritic/"
-checkpoint="logs/tetris_fixed/OptionCritic/best_model.zip"
+checkpoint="logs/tetris_fixed/OptionCritic/_model_25000_steps.zip"
 env = TetrisEnv(board_size=(6,6), grouped_actions=True, only_squares=True, no_rotations=True)
 
 # loading model

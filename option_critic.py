@@ -26,7 +26,7 @@ class OptionCriticConv(nn.Module):
         self.in_channels = in_features
         self.num_actions = num_actions
         self.num_options = num_options
-        self.magic_number = 7744#7 * 7 * 64
+        self.magic_number = 28224#7 * 7 * 64
         self.device = device
 
         self.cnn_feature = nn.Sequential(
@@ -94,11 +94,18 @@ class EvalCallbackOptionCritic():
         if not os.path.exists(self.best_model_save_path):
             os.makedirs(self.best_model_save_path)
 
+class CheckpointCallbackOptionCritic():
+    def __init__(self, freq, save_path, name_prefix):
+        self.freq = freq
+        self.checkpoint_prefix = save_path + name_prefix
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
 class OptionCritic():
     # parser.add_argument('--optimal-eps', type=float, default=0.05, help='Epsilon when playing optimally')
     # parser.add_argument('--frame-skip', default=4, type=int, help='Every how many frames to process')
     def __init__(self, env, num_options=2, temperature=1, seed=0, logdir='logs', entropy_reg=0.01, termination_reg=0.01,
-            update_frequency=4, freeze_interval=200, batch_size=32, max_history=1000000,
+            update_frequency=4, freeze_interval=200, batch_size=32, buffer_size=1000000,
             epsilon_decay=20000, epsilon_min=0.1, epsilon_start=1.0, gamma=0.99, learning_rate=0.00000025):
         self.env = env
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -113,7 +120,7 @@ class OptionCritic():
         self.option_critic_prime = deepcopy(self.option_critic)
         self.optim = torch.optim.RMSprop(self.option_critic.parameters(), lr=learning_rate)
 
-        self.buffer = ReplayBuffer(capacity=max_history, seed=seed)
+        self.buffer = ReplayBuffer(capacity=buffer_size, seed=seed)
         self.logger = Logger(logdir=logdir, run_name=type(self).__name__)
         self.gamma = gamma
         self.termination_reg = termination_reg
@@ -257,6 +264,9 @@ class OptionCritic():
         self.optim.load_state_dict(checkpoint['optim'])
         self.option_critic_prime = deepcopy(self.option_critic)
 
+    def checkpoint(self, checkpointCallback, steps):
+        self.save(f"{checkpointCallback.checkpoint_prefix}_{steps}_steps.zip")
+
     def learn(self, max_steps_total, max_steps_ep, callback=[]):
         steps = 0;
         while steps < max_steps_total:
@@ -315,6 +325,8 @@ class OptionCritic():
                     if steps % cb.freq == 0:
                         if isinstance(cb, EvalCallbackOptionCritic):
                             self.evaluate(cb)
+                        elif isinstance(cb, CheckpointCallbackOptionCritic):
+                            self.checkpoint(cb, steps)
             self.logger.log_train_episode(steps, rewards, option_lengths, ep_steps, num_rand, epsilon)
 
 if __name__=="__main__":
