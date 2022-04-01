@@ -1,4 +1,5 @@
 import time
+import os
 import numpy as np
 import argparse
 from copy import deepcopy
@@ -90,6 +91,8 @@ class EvalCallbackOptionCritic():
         self.eval_epsilon = eval_epsilon
         self.best_reward = -np.inf
         self.freq = freq
+        if not os.path.exists(self.best_model_save_path):
+            os.makedirs(self.best_model_save_path)
 
 class OptionCritic():
     # parser.add_argument('--optimal-eps', type=float, default=0.05, help='Epsilon when playing optimally')
@@ -100,7 +103,6 @@ class OptionCritic():
         self.env = env
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.seed = self.set_seed(seed)
-        self.num_options = num_options
         self.option_critic = OptionCriticConv(
             in_features=3,
             num_actions=self.env.action_space.n,
@@ -183,26 +185,18 @@ class OptionCritic():
         actor_loss = termination_loss + policy_loss
         return actor_loss
 
-    def predict(self, obs, current_option=None, state_input=False):
+    def predict(self, obs, current_option=None, deterministic=False, epsilon=0.05):
         # get state
-        if not state_input:
-            state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
-        else:
-            state = obs
+        state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
         # determine whether or not option is terminating
         if current_option is None:
             option_termination = True
         else:
             option_termination = self.option_critic.predict_option_termination(state, current_option)
         # if terminating, we want to determine current option, otherwise it remains the same
-        epsilon = self.calc_epsilon(steps)
         if option_termination:
-            if current_option is not None:
-                option_lengths[current_option].append(curr_op_len)
-                curr_op_len = 0
-            if np.random.rand() < epsilon:
-                current_option = np.random.choice(self.num_options)
-                num_rand += 1
+            if not deterministic and np.random.rand() < epsilon:
+                current_option = np.random.choice(self.option_critic.num_options)
             else:
                 current_option = self.option_critic.get_greedy_options(state).item()
         # select action
@@ -212,7 +206,7 @@ class OptionCritic():
     def evaluate(self, evalCallback):
         # self.best_model_save_path = best_model_save_path
         rewards        = 0
-        option_lengths = {opt:[] for opt in range(self.num_options)}
+        option_lengths = {opt:[] for opt in range(self.option_critic.num_options)}
         total_ep_steps = 0
         for _ in range(evalCallback.n_eval_episodes):
             obs            = evalCallback.eval_env.reset()
@@ -230,7 +224,7 @@ class OptionCritic():
                         option_lengths[current_option].append(curr_op_len)
                     curr_op_len = 0
                     if not evalCallback.deterministic and np.random.rand() < evalCallback.eval_epsilon:
-                        current_option = np.random.choice(self.num_options)
+                        current_option = np.random.choice(self.option_critic.num_options)
                     else:
                         current_option = self.option_critic.get_greedy_options(state).item()
                 # select action
@@ -245,17 +239,29 @@ class OptionCritic():
         avg_reward = rewards / evalCallback.n_eval_episodes
         avg_ep_steps = total_ep_steps / evalCallback.n_eval_episodes
         self.logger.log_eval_episode(avg_reward, avg_ep_steps, total_ep_steps, option_lengths)
-        # if avg_reward > evalCallback.best_reward:
-        #     self.save_model(evalCallback.best_model_save_path, model_name)
+        if avg_reward > evalCallback.best_reward:
+            evalCallback.best_reward = avg_reward
+            self.save(evalCallback.best_model_save_path + "best_model.zip")
 
-    def save_model(folder, model_name):
-        pass
+    def save(self, path):
+        torch.save({
+            'model_option_critic': self.option_critic.state_dict(),
+            'optim': self.optim.state_dict(),
+            'seed': self.seed
+            }, path)
+
+    def load(self, path):
+        checkpoint = torch.load(path)
+        self.option_critic.load_state_dict(checkpoint['model_option_critic'])
+        self.seed = self.set_seed(checkpoint['seed'])
+        self.optim.load_state_dict(checkpoint['optim'])
+        self.option_critic_prime = deepcopy(self.option_critic)
 
     def learn(self, max_steps_total, max_steps_ep, callback=[]):
         steps = 0;
         while steps < max_steps_total:
             rewards        = 0
-            option_lengths = {opt:[] for opt in range(self.num_options)}
+            option_lengths = {opt:[] for opt in range(self.option_critic.num_options)}
             obs            = self.env.reset()
             game_over = False; ep_steps = 0; option_termination = True; current_option = None; num_rand = 0
             while not game_over and ep_steps < max_steps_ep:
@@ -273,7 +279,7 @@ class OptionCritic():
                         option_lengths[current_option].append(curr_op_len)
                     curr_op_len = 0
                     if np.random.rand() < epsilon:
-                        current_option = np.random.choice(self.num_options)
+                        current_option = np.random.choice(self.option_critic.num_options)
                         num_rand += 1
                     else:
                         current_option = self.option_critic.get_greedy_options(state).item()

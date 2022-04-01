@@ -10,20 +10,26 @@ from tetris import TetrisEnv
 from option_critic import OptionCritic
 
 
-checkpoint="logs/tetris_fixed/PPO/_model_50000_steps.zip"
+# checkpoint="logs/tetris_fixed/PPO/_model_50000_steps.zip"
+folder = "logs/tetris_fixed/OptionCritic/"
+checkpoint="logs/tetris_fixed/OptionCritic/best_model.zip"
+env = TetrisEnv(board_size=(6,6), grouped_actions=True, only_squares=True, no_rotations=True)
 
 # loading model
-model = PPO.load(checkpoint)
+# model = PPO.load(checkpoint)
+model = OptionCritic(env, update_frequency=1, logdir=folder)
+model.load(checkpoint)
 
-env = TetrisEnv(board_size=(10,10), grouped_actions=True, only_squares=True, no_rotations=True, max_steps=500)
-
-game_over = False
-obs = env.reset()
+game_over      = False
+obs            = env.reset()
+current_option = None
 # env.measure_step_time(verbose=True)
 env.render(wait_sec=1, mode='image', verbose=True)
 while not game_over:
-    action, _states = model.predict(obs, deterministic=False)
-    print("Action", action)
+    # action, _ = model.predict(obs, deterministic=False)
+    # print("Action", action)
+    action, current_option = model.predict(obs, deterministic=False, current_option=current_option) # option critic version
+    print(f"Action: {action}| option: {current_option}")
     obs, reward, game_over, info = env.step(action)
     env.render(wait_sec=1, mode='image', verbose=True)
     print("Reward", reward)

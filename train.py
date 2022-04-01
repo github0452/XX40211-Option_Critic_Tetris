@@ -23,14 +23,11 @@ num_steps = 2000000 # 2 million steps
 save_freq = convert(num_steps/10, num_cpu)
 eval_freq = convert(2000, num_cpu)
 size = (6,6)
+folder = "./logs/tetris_fixed/"
 
 # fixed board rendering not removing rows
 # lowered learning rate from 0.0003 to 0.00003
 # large arnge of possible rewards?
-
-model_type = "ActionCritic"
-folder = "./logs/tetris_fixed/"
-model_folder = folder + model_type + "/"
 
 # env = gym.make("Breakout-v0")
 # env = DummyVecEnv([make_env(size) for i in range(num_cpu)])
@@ -40,6 +37,7 @@ eval_env = Monitor(TetrisEnv(board_size=size, grouped_actions=True, only_squares
 # model = PPO("CnnPolicy", env, verbose=1, tensorboard_log=folder, learning_rate=1e-5)
 # model = DQN("CnnPolicy", env, verbose=0,buffer_size=10000, tensorboard_log=folder)
 model = OptionCritic(env, update_frequency=1, logdir=folder)
+model_folder = folder + type(model).__name__ + "/"
 
 # loading model
 # model = DQN.load(model_folder + "_model_200000_steps")
