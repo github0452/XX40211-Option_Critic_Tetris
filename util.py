@@ -48,7 +48,7 @@ class Logger():
             datefmt='%Y/%m/%d %I:%M:%S %p'
             )
 
-    def log_episode(self, steps, reward, option_lengths, ep_steps, num_rand, epsilon):
+    def log_train_episode(self, steps, reward, option_lengths, ep_steps, num_rand, epsilon):
         self.n_eps += 1
         logging.info(f"> ep {self.n_eps} done. total_steps={steps} | reward={reward} | episode_steps={ep_steps} "\
             f"| hours={(time.time()-self.start_time) / 60 / 60:.3f} | epsilon={epsilon:.3f}")
@@ -61,7 +61,17 @@ class Logger():
             self.writer.add_scalar(tag=f"rollout/options/option_{option}_avg_length", scalar_value=np.mean(lens) if len(lens)>0 else 0, global_step=self.n_eps)
             self.writer.add_scalar(tag=f"rollout/options/option_{option}_active", scalar_value=sum(lens)/ep_steps, global_step=self.n_eps)
 
-    def log_step(self, step, actor_loss, critic_loss, entropy, epsilon):
+    def log_eval_episode(self, avg_reward, avg_ep_steps, total_ep_steps, option_lengths):
+        logging.info(f"> evaluation; ep {self.n_eps} done. avg_reward={avg_reward} | avg_episode_steps={avg_ep_steps} "\
+            f"| hours={(time.time()-self.start_time) / 60 / 60:.3f}")
+        self.writer.add_scalar(tag="eval/mean_ep_length", scalar_value=avg_ep_steps, global_step=self.n_eps)
+        self.writer.add_scalar(tag='eval/mean_reward', scalar_value=avg_reward, global_step=self.n_eps)
+        # Keep track of options statistics
+        for option, lens in option_lengths.items():
+            self.writer.add_scalar(tag=f"eval/options/option_{option}_avg_length", scalar_value=np.mean(lens) if len(lens)>0 else 0, global_step=self.n_eps)
+            self.writer.add_scalar(tag=f"eval/options/option_{option}_active", scalar_value=sum(lens)/total_ep_steps, global_step=self.n_eps)
+
+    def log_train_step(self, step, actor_loss, critic_loss, entropy, epsilon):
         if actor_loss:
             self.writer.add_scalar(tag="train/actor_loss", scalar_value=actor_loss.item(), global_step=step)
             loss = actor_loss if not critic_loss else actor_loss+critic_loss

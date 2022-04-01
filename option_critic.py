@@ -67,14 +67,29 @@ class OptionCriticConv(nn.Module):
     def get_terminations(self, state):
         return self.options_term_prob(state).sigmoid()
 
-    def get_action(self, feature, option):
+    def get_action(self, feature, option, training=False):
         logits = torch.matmul(feature, self.options_W[option]) + self.options_b[option]
         a_dist = (logits / self.temperature).softmax(dim=-1)
         a_dist = torch.distributions.Categorical(a_dist)
         a = a_dist.sample()
-        logp = a_dist.log_prob(a)
-        entropy = a_dist.entropy()
-        return a.item(), logp, entropy
+        if not training:
+            return a.item()
+        else:
+            logp = a_dist.log_prob(a)
+            entropy = a_dist.entropy()
+            return a.item(), logp, entropy
+
+class EvalCallbackOptionCritic():
+    def __init__(self, eval_env, best_model_save_path, log_path, freq, deterministic=False, n_eval_episodes=100, eval_epsilon=0.05, max_steps_ep=18000):
+        self.eval_env = eval_env
+        self.best_model_save_path = best_model_save_path
+        self.log_path = log_path
+        self.deterministic = deterministic
+        self.n_eval_episodes = n_eval_episodes
+        self.max_steps_ep = max_steps_ep
+        self.eval_epsilon = eval_epsilon
+        self.best_reward = -np.inf
+        self.freq = freq
 
 class OptionCritic():
     # parser.add_argument('--optimal-eps', type=float, default=0.05, help='Epsilon when playing optimally')
@@ -168,25 +183,102 @@ class OptionCritic():
         actor_loss = termination_loss + policy_loss
         return actor_loss
 
-    def learn(self, max_steps_total, max_steps_ep):
+    def predict(self, obs, current_option=None, state_input=False):
+        # get state
+        if not state_input:
+            state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
+        else:
+            state = obs
+        # determine whether or not option is terminating
+        if current_option is None:
+            option_termination = True
+        else:
+            option_termination = self.option_critic.predict_option_termination(state, current_option)
+        # if terminating, we want to determine current option, otherwise it remains the same
+        epsilon = self.calc_epsilon(steps)
+        if option_termination:
+            if current_option is not None:
+                option_lengths[current_option].append(curr_op_len)
+                curr_op_len = 0
+            if np.random.rand() < epsilon:
+                current_option = np.random.choice(self.num_options)
+                num_rand += 1
+            else:
+                current_option = self.option_critic.get_greedy_options(state).item()
+        # select action
+        action = self.option_critic.get_action(state, current_option, training=False)
+        return action, current_option
+
+    def evaluate(self, evalCallback):
+        # self.best_model_save_path = best_model_save_path
+        rewards        = 0
+        option_lengths = {opt:[] for opt in range(self.num_options)}
+        total_ep_steps = 0
+        for _ in range(evalCallback.n_eval_episodes):
+            obs            = evalCallback.eval_env.reset()
+            game_over = False; ep_steps = 0; option_termination = True; current_option = None
+            while not game_over and ep_steps < evalCallback.max_steps_ep:
+                state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
+                # determine whether or not option is terminating
+                if current_option is None:
+                    option_termination = True
+                else:
+                    option_termination = self.option_critic.predict_option_termination(state, current_option)
+                # if terminating, we want to determine current option, otherwise it remains the same
+                if option_termination:
+                    if current_option is not None:
+                        option_lengths[current_option].append(curr_op_len)
+                    curr_op_len = 0
+                    if not evalCallback.deterministic and np.random.rand() < evalCallback.eval_epsilon:
+                        current_option = np.random.choice(self.num_options)
+                    else:
+                        current_option = self.option_critic.get_greedy_options(state).item()
+                # select action
+                action = self.option_critic.get_action(state, current_option, training=False)
+                next_obs, reward, game_over, _ = evalCallback.eval_env.step(action)
+                # update for next iteration
+                rewards += reward
+                ep_steps += 1
+                curr_op_len += 1
+                obs = next_obs
+            total_ep_steps += ep_steps
+        avg_reward = rewards / evalCallback.n_eval_episodes
+        avg_ep_steps = total_ep_steps / evalCallback.n_eval_episodes
+        self.logger.log_eval_episode(avg_reward, avg_ep_steps, total_ep_steps, option_lengths)
+        # if avg_reward > evalCallback.best_reward:
+        #     self.save_model(evalCallback.best_model_save_path, model_name)
+
+    def save_model(folder, model_name):
+        pass
+
+    def learn(self, max_steps_total, max_steps_ep, callback=[]):
         steps = 0;
         while steps < max_steps_total:
             rewards        = 0
             option_lengths = {opt:[] for opt in range(self.num_options)}
             obs            = self.env.reset()
-            state          = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
-            game_over = False; ep_steps = 0; option_termination = True; curr_op_len = 0; current_option = 0; num_rand = 0
+            game_over = False; ep_steps = 0; option_termination = True; current_option = None; num_rand = 0
             while not game_over and ep_steps < max_steps_ep:
+                # get state
+                state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
+                # determine whether or not option is terminating
+                if current_option is None:
+                    option_termination = True
+                else:
+                    option_termination = self.option_critic.predict_option_termination(state, current_option)
+                # if terminating, we want to determine current option, otherwise it remains the same
                 epsilon = self.calc_epsilon(steps)
                 if option_termination:
-                    option_lengths[current_option].append(curr_op_len)
+                    if current_option is not None:
+                        option_lengths[current_option].append(curr_op_len)
                     curr_op_len = 0
                     if np.random.rand() < epsilon:
                         current_option = np.random.choice(self.num_options)
                         num_rand += 1
                     else:
                         current_option = self.option_critic.get_greedy_options(state).item()
-                action, logp, entropy = self.option_critic.get_action(state, current_option)
+                # select action
+                action, logp, entropy = self.option_critic.get_action(state, current_option, training=True)
                 next_obs, reward, game_over, _ = self.env.step(action)
                 self.buffer.push(obs, current_option, reward, next_obs, game_over)
 
@@ -204,9 +296,6 @@ class OptionCritic():
                     self.optim.step()
                     if steps % self.freeze_interval == 0:
                         self.option_critic_prime.load_state_dict(self.option_critic.state_dict())
-                # update for next iteration
-                state = self.option_critic.get_state_feature(torch.from_numpy(next_obs).float())
-                option_termination = self.option_critic.predict_option_termination(state, current_option)
                 # update for current episode tracking
                 rewards += reward
                 ep_steps += 1
@@ -215,8 +304,12 @@ class OptionCritic():
                 # update for global tracking
                 steps += 1
                 if steps % 4 == 0:
-                    self.logger.log_step(steps, actor_loss, critic_loss, entropy.item(), epsilon)
-            self.logger.log_episode(steps, rewards, option_lengths, ep_steps, num_rand, epsilon)
+                    self.logger.log_train_step(steps, actor_loss, critic_loss, entropy.item(), epsilon)
+                for cb in callback:
+                    if steps % cb.freq == 0:
+                        if isinstance(cb, EvalCallbackOptionCritic):
+                            self.evaluate(cb)
+            self.logger.log_train_episode(steps, rewards, option_lengths, ep_steps, num_rand, epsilon)
 
 if __name__=="__main__":
     env = TetrisEnv(board_size=(6,6), grouped_actions=True, only_squares=True, no_rotations=True, max_steps=500)

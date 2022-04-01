@@ -7,7 +7,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from tetris import TetrisEnv
-from option_critic import OptionCritic
+from option_critic import OptionCritic, EvalCallbackOptionCritic
 
 def make_env(board_size, seed=0):
     def _init():
@@ -46,11 +46,14 @@ model = OptionCritic(env, update_frequency=1, logdir=folder)
 
 # callbacks
 checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=folder, name_prefix=model_folder + '_model')
-eval_callback = EvalCallback(eval_env, best_model_save_path=model_folder,
-                             log_path=model_folder, eval_freq=eval_freq,
-                             deterministic=False, render=False, n_eval_episodes=100)
+# eval_callback = EvalCallback(eval_env, best_model_save_path=model_folder,
+#                              log_path=model_folder, eval_freq=eval_freq,
+#                              deterministic=False, render=False, n_eval_episodes=100)
+eval_callback = EvalCallbackOptionCritic(eval_env, best_model_save_path=model_folder,
+                             log_path=model_folder, freq=eval_freq,
+                             deterministic=False, n_eval_episodes=100, max_steps_ep=18000)
 
 # trainig
 # model = model.learn(total_timesteps=num_steps, log_interval=1)#, callback=[eval_callback, checkpoint_callback])
-model.learn(max_steps_total=1000000, max_steps_ep=18000) # for the option critic
+model.learn(max_steps_total=1000000, max_steps_ep=18000, callback=[eval_callback]) # for the option critic
 # model.save(model_folder + "final_model")
