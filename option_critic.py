@@ -62,10 +62,7 @@ class OptionCriticConv(nn.Module):
     def predict_option_termination(self, state, current_option):
         termination = self.options_term_prob(state)[:, current_option].sigmoid()
         option_termination = Bernoulli(termination).sample()
-
-        Q = self.get_options_q(state)
-        next_option = Q.argmax(dim=-1)
-        return bool(option_termination.item()), next_option.item()
+        return bool(option_termination.item())
 
     def get_terminations(self, state):
         return self.options_term_prob(state).sigmoid()
@@ -84,10 +81,10 @@ class OptionCritic():
     # parser.add_argument('--frame-skip', default=4, type=int, help='Every how many frames to process')
     def __init__(self, env, num_options=2, temperature=1, seed=0, logdir='logs', entropy_reg=0.01, termination_reg=0.01,
             update_frequency=4, freeze_interval=200, batch_size=32, max_history=1000000,
-            epsilon_decay=20000, epsilon_min=0.1, epsilon_start=1.0, gamma=0.99, learning_rate=0.00000025,
-            exp="test"):
+            epsilon_decay=20000, epsilon_min=0.1, epsilon_start=1.0, gamma=0.99, learning_rate=0.00000025):
         self.env = env
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.seed = self.set_seed(seed)
         self.num_options = num_options
         self.option_critic = OptionCriticConv(
             in_features=3,
@@ -98,12 +95,9 @@ class OptionCritic():
         )
         self.option_critic_prime = deepcopy(self.option_critic)
         self.optim = torch.optim.RMSprop(self.option_critic.parameters(), lr=learning_rate)
-        self.seed = seed
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        env.seed(seed)
+
         self.buffer = ReplayBuffer(capacity=max_history, seed=seed)
-        self.logger = Logger(logdir=logdir, run_name=f"option_critic-{type(env).__name__}-{exp}")
+        self.logger = Logger(logdir=logdir, run_name=type(self).__name__)
         self.gamma = gamma
         self.termination_reg = termination_reg
         self.entropy_reg = entropy_reg
@@ -113,6 +107,12 @@ class OptionCritic():
         self.epsilon_start = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+
+    def set_seed(self, seed):
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        self.env.seed(seed)
+        return seed
 
     def calc_epsilon(self, steps):
         return self.epsilon_min + (self.epsilon_start - self.epsilon_min) * exp(-steps / self.epsilon_decay)
@@ -171,21 +171,22 @@ class OptionCritic():
     def learn(self, max_steps_total, max_steps_ep):
         steps = 0;
         while steps < max_steps_total:
-            rewards = 0; option_lengths = {opt:[] for opt in range(self.num_options)}
-            obs   = self.env.reset()
-            state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
-            greedy_option  = self.option_critic.get_greedy_options(state).item()
-            game_over = False; ep_steps = 0; option_termination = True; curr_op_len = 0; current_option = 0
+            rewards        = 0
+            option_lengths = {opt:[] for opt in range(self.num_options)}
+            obs            = self.env.reset()
+            state          = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
+            game_over = False; ep_steps = 0; option_termination = True; curr_op_len = 0; current_option = 0; num_rand = 0
             while not game_over and ep_steps < max_steps_ep:
                 epsilon = self.calc_epsilon(steps)
-
                 if option_termination:
                     option_lengths[current_option].append(curr_op_len)
-                    current_option = np.random.choice(self.num_options) if np.random.rand() < epsilon else greedy_option
                     curr_op_len = 0
-
+                    if np.random.rand() < epsilon:
+                        current_option = np.random.choice(self.num_options)
+                        num_rand += 1
+                    else:
+                        current_option = self.option_critic.get_greedy_options(state).item()
                 action, logp, entropy = self.option_critic.get_action(state, current_option)
-
                 next_obs, reward, game_over, _ = self.env.step(action)
                 self.buffer.push(obs, current_option, reward, next_obs, game_over)
 
@@ -205,7 +206,7 @@ class OptionCritic():
                         self.option_critic_prime.load_state_dict(self.option_critic.state_dict())
                 # update for next iteration
                 state = self.option_critic.get_state_feature(torch.from_numpy(next_obs).float())
-                option_termination, greedy_option = self.option_critic.predict_option_termination(state, current_option)
+                option_termination = self.option_critic.predict_option_termination(state, current_option)
                 # update for current episode tracking
                 rewards += reward
                 ep_steps += 1
@@ -214,8 +215,8 @@ class OptionCritic():
                 # update for global tracking
                 steps += 1
                 if steps % 4 == 0:
-                    self.logger.log_data(steps, actor_loss, critic_loss, entropy.item(), epsilon)
-            self.logger.log_episode(steps, rewards, option_lengths, ep_steps, epsilon)
+                    self.logger.log_step(steps, actor_loss, critic_loss, entropy.item(), epsilon)
+            self.logger.log_episode(steps, rewards, option_lengths, ep_steps, num_rand, epsilon)
 
 if __name__=="__main__":
     env = TetrisEnv(board_size=(6,6), grouped_actions=True, only_squares=True, no_rotations=True, max_steps=500)
