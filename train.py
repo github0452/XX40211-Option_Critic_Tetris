@@ -29,7 +29,7 @@ size = (6,6)
 # large arnge of possible rewards?
 
 model_type = "ActionCritic"
-folder = "./logs/fixing_option_critic7/"
+folder = "./logs/tetris_fixed/"
 model_folder = folder + model_type + "/"
 
 # env = gym.make("Breakout-v0")
@@ -39,7 +39,7 @@ eval_env = Monitor(TetrisEnv(board_size=size, grouped_actions=True, only_squares
 
 # model = PPO("CnnPolicy", env, verbose=1, tensorboard_log=folder, learning_rate=1e-5)
 # model = DQN("CnnPolicy", env, verbose=0,buffer_size=10000, tensorboard_log=folder)
-model = OptionCritic(env)
+model = OptionCritic(env, update_frequency=1, logdir=folder)
 
 # loading model
 # model = DQN.load(model_folder + "_model_200000_steps")
