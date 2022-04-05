@@ -267,7 +267,7 @@ class OptionCritic():
     def checkpoint(self, checkpointCallback, steps):
         self.save(f"{checkpointCallback.checkpoint_prefix}_{steps}_steps.zip")
 
-    def learn(self, max_steps_total, max_steps_ep, callback=[]):
+    def learn(self, max_steps_total, max_steps_ep, log_interval=1, callback=[]):
         steps = 0;
         while steps < max_steps_total:
             rewards        = 0
@@ -319,7 +319,7 @@ class OptionCritic():
                 obs = next_obs
                 # update for global tracking
                 steps += 1
-                if steps % 1000 == 0:
+                if steps % log_interval == 0:
                     self.logger.log_train_step(steps, actor_loss, critic_loss, entropy.item(), epsilon)
                 for cb in callback:
                     if steps % cb.freq == 0:

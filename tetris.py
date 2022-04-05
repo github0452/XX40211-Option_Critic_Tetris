@@ -2,7 +2,6 @@ import numpy as np
 import random
 import gym
 import gym.spaces as spaces
-from gym.envs.classic_control import rendering
 import time
 
 class TetrisPiece:
@@ -334,18 +333,23 @@ class GameState:
         return (3, self.RENDER.Y_SCREEN, self.RENDER.X_SCREEN)
 
 class TetrisEnv(gym.Env):
-    def __init__(self, board_size=(20,10), action_type='grouped', output_type='image', only_squares=False, score_reward=True, scale_reward=1):
+    def __init__(self, board_size=(20,10), action_type='grouped', output_type='image', simplified=True, score_reward=True, scale_reward=1):
         super(TetrisEnv, self).__init__()
-        self.state = GameState(board_size, only_squares)
-        self.action_type = action_type
-        if action_type == 'grouped':
-            self._action_set = [a for a in range(self.state.X_BOARD * 4)]
-        elif action_type == 'semigrouped':
-            self._action_set = [a for a in range(self.state.X_BOARD+2)]
-        elif action_type == 'standard':
-            self._action_set = [a for a in range(6)]
+        if simplified:
+            self.state = GameState(board_size, only_squares=True)
+            self.action_type = 'simplified'
+            self._action_set = [a for a in range(self.state.X_BOARD)]
         else:
-            raise ValueError('Action type not recognised.')
+            self.state = GameState(board_size, only_squares=False)
+            self.action_type = action_type
+            if action_type == 'grouped':
+                self._action_set = [a for a in range(self.state.X_BOARD * 4)]
+            elif action_type == 'semigrouped':
+                self._action_set = [a for a in range(self.state.X_BOARD+2)]
+            elif action_type == 'standard':
+                self._action_set = [a for a in range(6)]
+            else:
+                raise ValueError('Action type not recognised.')
         self.action_space = spaces.Discrete(len(self._action_set))
         self.observation_space = spaces.Box(low=0, high=255, shape=self.state.screen_dim(), dtype=np.uint8)
         self.output_type = output_type
@@ -365,14 +369,14 @@ class TetrisEnv(gym.Env):
             rotation = action % 4
             self.state.set_piece_rotation(rotation)
             self.state.set_curr_piece(x_index, force_on=True)
-            game_over, shifted_down, piece_dropped = self.state.hard_drop()
+            shifted_down, piece_dropped = self.state.hard_drop()
         elif self.action_type == 'semigrouped':
             if action < self.state.X_BOARD:
                 self.state.set_curr_piece(action, force_on=True)
-                game_over, shifted_down, piece_dropped = self.state.hard_drop()
+                shifted_down, piece_dropped = self.state.hard_drop()
             else:
                 rotate_left = action == self.state.X_BOARD
-                game_over, shifted_down, piece_dropped = self.state.rotate_piece(left=rotate_left)
+                shifted_down, piece_dropped = self.state.rotate_piece(left=rotate_left)
         elif self.action_type == 'standard':
             # actions = {0:'rotate_left', 1: 'rotate_right', 2: 'hard_drop', 3: 'soft_drop', 4:'move_left', 5: 'move_right'}
             if action < 2:
@@ -385,6 +389,9 @@ class TetrisEnv(gym.Env):
             else:
                 adj_x = -1 if action == 4 else 1
                 shifted_down, piece_dropped = self.state.move_curr_piece(adj_x)
+        elif self.action_type == 'simplified':
+            self.state.set_curr_piece(action, force_on=True)
+            shifted_down, piece_dropped = self.state.hard_drop()
         if piece_dropped:
             game_over = self.state.cycle_pieces()
         else:
@@ -402,12 +409,14 @@ class TetrisEnv(gym.Env):
         image = self.state.get_board()
         if mode =='image':
             if self.viewer is None:
-                self.viewer = rendering.SimpleImageViewer()
+                self.viewer = gym.envs.classic_control.rendering.SimpleImageViewer()
             image = np.moveaxis(image, 0, -1)
             self.viewer.imshow(image)
             time.sleep(wait_sec)
         elif mode =='rbg_array' or mode == 'human':
             return image
+        elif mode == 'none':
+            pass
         else:
             print(mode)
         if verbose:
@@ -444,7 +453,7 @@ class InteractionTetris(TetrisEnv):
         super().__init__(board_size, action_type, only_squares)
 
     def step(self, action):
-        action = input(f'Type in action, {self._action_set}')
+        action = input('Type in action,'+str(self._action_set))
         action = int(action)
         print(action)
         return super().step(action)
@@ -453,11 +462,11 @@ if __name__ == '__main__':
     env = InteractionTetris(only_squares=False, action_type='standard', board_size=(10,10))
     env.reset()
     # env.measure_step_time(verbose=True)
-    env.render(wait_sec=0.1)
+    env.render(mode='none', wait_sec=0.1, verbose=True)
     for _ in range(100):
         action = random.choice(env._action_set)
         screen, reward, game_over, info = env.step(action)
-        env.render(wait_sec=1)
+        env.render(mode='none', wait_sec=1, verbose=True)
         print("Reward:", reward)
         if game_over:
             env.reset()
