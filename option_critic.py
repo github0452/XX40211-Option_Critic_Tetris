@@ -319,7 +319,7 @@ class OptionCritic():
                 obs = next_obs
                 # update for global tracking
                 steps += 1
-                if steps % 4 == 0:
+                if steps % 1000 == 0:
                     self.logger.log_train_step(steps, actor_loss, critic_loss, entropy.item(), epsilon)
                 for cb in callback:
                     if steps % cb.freq == 0:

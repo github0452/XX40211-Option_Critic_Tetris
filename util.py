@@ -50,8 +50,8 @@ class Logger():
 
     def log_train_episode(self, steps, reward, option_lengths, ep_steps, num_rand, epsilon):
         self.n_eps += 1
-        logging.info(f"> ep {self.n_eps} done. total_steps={steps} | reward={reward} | episode_steps={ep_steps} "\
-            f"| hours={(time.time()-self.start_time) / 60 / 60:.3f} | epsilon={epsilon:.3f}")
+        # logging.info(f"> ep {self.n_eps} done. total_steps={steps} | reward={reward} | episode_steps={ep_steps} "\
+        #     f"| hours={(time.time()-self.start_time) / 60 / 60:.3f} | epsilon={epsilon:.3f}")
         self.writer.add_scalar(tag="rollout/episodic_rewards", scalar_value=reward, global_step=self.n_eps)
         self.writer.add_scalar(tag='rollout/episode_lengths', scalar_value=ep_steps, global_step=self.n_eps)
         self.writer.add_scalar(tag='rollout/percentage_random_action', scalar_value=num_rand/ep_steps, global_step=self.n_eps)
