@@ -62,6 +62,6 @@ eval_callback = EvalCallback(eval_env, best_model_save_path=model_folder,
 #                              deterministic=False, n_eval_episodes=100, max_steps_ep=18000)
 
 # trainig
-model = model.learn(total_timesteps=num_steps, log_interval=logging_freq)#, callback=[eval_callback, checkpoint_callback])
+model = model.learn(total_timesteps=num_steps, log_interval=logging_freq, callback=[eval_callback, checkpoint_callback])
 # model.learn(max_steps_total=num_steps, max_steps_ep=18000, callback=[eval_callback, checkpoint_callback]) # for the option critic
 # model.save(model_folder + "final_model")

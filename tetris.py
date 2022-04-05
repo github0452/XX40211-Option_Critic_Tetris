@@ -333,7 +333,7 @@ class GameState:
         return (3, self.RENDER.Y_SCREEN, self.RENDER.X_SCREEN)
 
 class TetrisEnv(gym.Env):
-    def __init__(self, board_size=(20,10), action_type='grouped', output_type='image', simplified=True, score_reward=True, scale_reward=1):
+    def __init__(self, board_size=(20,10), action_type='grouped', output_type='image', simplified=True, score_reward=True, scale_reward=1, max_steps=10000):
         super(TetrisEnv, self).__init__()
         if simplified:
             self.state = GameState(board_size, only_squares=True)
@@ -355,11 +355,14 @@ class TetrisEnv(gym.Env):
         self.output_type = output_type
         self.score_reward = score_reward
         self.scale_reward = scale_reward
+        self.steps = 0
+        self.max_steps = max_steps
         # other stuff
         self.viewer = None
 
     def reset(self):
         self.state.reset()
+        self.steps = 0
         state = self.state.get_board()
         return state
 
@@ -403,6 +406,9 @@ class TetrisEnv(gym.Env):
         else:
             reward = 0
         state = self.state.get_board()
+        self.steps += 1
+        if self.steps >= self.max_steps:
+            game_over = True
         return state, reward, game_over, {}
 
     def render(self, mode='image', wait_sec=0, verbose=False):
