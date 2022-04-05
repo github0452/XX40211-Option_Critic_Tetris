@@ -106,9 +106,9 @@ class OptionCritic():
     # parser.add_argument('--frame-skip', default=4, type=int, help='Every how many frames to process')
     def __init__(self, env, num_options=2, temperature=1, seed=0, logdir='logs', entropy_reg=0.01, termination_reg=0.01,
             update_frequency=4, freeze_interval=200, batch_size=32, buffer_size=1000000,
-            epsilon_decay=20000, epsilon_min=0.1, epsilon_start=1.0, gamma=0.99, learning_rate=0.00000025):
+            epsilon_decay=20000, epsilon_min=0.1, epsilon_start=1.0, gamma=0.99, learning_rate=0.00000025, device='cuda:0'):
         self.env = env
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device(device)
         self.seed = self.set_seed(seed)
         self.option_critic = OptionCriticConv(
             in_features=3,
@@ -267,7 +267,7 @@ class OptionCritic():
     def checkpoint(self, checkpointCallback, steps):
         self.save(f"{checkpointCallback.checkpoint_prefix}_{steps}_steps.zip")
 
-    def learn(self, max_steps_total, max_steps_ep, log_interval=1, callback=[]):
+    def learn(self, total_timesteps, log_interval=1, callback=[]):
         steps = 0;
         while steps < max_steps_total:
             rewards        = 0
