@@ -26,7 +26,7 @@ class OptionCriticConv(nn.Module):
         self.in_channels = in_features
         self.num_actions = num_actions
         self.num_options = num_options
-        self.magic_number = 28224#7 * 7 * 64
+        self.magic_number = 26496#7 * 7 * 64
         self.device = device
 
         self.cnn_feature = nn.Sequential(
@@ -95,7 +95,7 @@ class EvalCallbackOptionCritic():
             os.makedirs(self.best_model_save_path)
 
 class CheckpointCallbackOptionCritic():
-    def __init__(self, freq, save_path, name_prefix):
+    def __init__(self, freq, save_path, name_prefix=''):
         self.freq = freq
         self.checkpoint_prefix = save_path + name_prefix
         if not os.path.exists(save_path):
