@@ -5,8 +5,7 @@ import argparse
 from copy import deepcopy
 from math import exp
 
-from util import ReplayBuffer, Logger
-from tetris import TetrisEnv
+from option_critic.util import ReplayBuffer, Logger
 
 import torch
 import torch.nn as nn
@@ -81,13 +80,12 @@ class OptionCriticConv(nn.Module):
             return a.item(), logp, entropy
 
 class EvalCallbackOptionCritic():
-    def __init__(self, eval_env, best_model_save_path, log_path, freq, deterministic=False, n_eval_episodes=100, eval_epsilon=0.05, max_steps_ep=18000):
+    def __init__(self, eval_env, best_model_save_path, log_path, freq, deterministic=False, n_eval_episodes=100, eval_epsilon=0.05):
         self.eval_env = eval_env
         self.best_model_save_path = best_model_save_path
         self.log_path = log_path
         self.deterministic = deterministic
         self.n_eval_episodes = n_eval_episodes
-        self.max_steps_ep = max_steps_ep
         self.eval_epsilon = eval_epsilon
         self.best_reward = -np.inf
         self.freq = freq
@@ -218,7 +216,7 @@ class OptionCritic():
         for _ in range(evalCallback.n_eval_episodes):
             obs            = evalCallback.eval_env.reset()
             game_over = False; ep_steps = 0; option_termination = True; current_option = None
-            while not game_over and ep_steps < evalCallback.max_steps_ep:
+            while not game_over:
                 state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
                 # determine whether or not option is terminating
                 if current_option is None:
@@ -269,12 +267,12 @@ class OptionCritic():
 
     def learn(self, total_timesteps, log_interval=1, callback=[]):
         steps = 0;
-        while steps < max_steps_total:
+        while steps < total_timesteps:
             rewards        = 0
             option_lengths = {opt:[] for opt in range(self.option_critic.num_options)}
             obs            = self.env.reset()
             game_over = False; ep_steps = 0; option_termination = True; current_option = None; num_rand = 0
-            while not game_over and ep_steps < max_steps_ep:
+            while not game_over:
                 # get state
                 state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
                 # determine whether or not option is terminating
@@ -330,6 +328,7 @@ class OptionCritic():
             self.logger.log_train_episode(steps, rewards, option_lengths, ep_steps, num_rand, epsilon)
 
 if __name__=="__main__":
+    from tetris import TetrisEnv
     env = TetrisEnv(board_size=(6,6), grouped_actions=True, only_squares=True, no_rotations=True, max_steps=500)
     model = OptionCritic(env)
-    model.learn(max_steps_total=1000000, max_steps_ep=18000)
+    model.learn(max_steps_total=1000000)
