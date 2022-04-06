@@ -1,4 +1,5 @@
 logs/
+logs_gpu/
 pycache/
 __pycache__/
 __pycache__/option_critic.cpython-39.pyc
