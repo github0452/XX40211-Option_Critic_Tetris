@@ -61,8 +61,8 @@ class Logger():
             self.writer.add_scalar(tag=f"rollout/options/option_{option}_avg_length", scalar_value=np.mean(lens) if len(lens)>0 else 0, global_step=self.n_eps)
             self.writer.add_scalar(tag=f"rollout/options/option_{option}_active", scalar_value=sum(lens)/ep_steps, global_step=self.n_eps)
 
-    def log_eval_episode(self, avg_reward, avg_ep_steps, total_ep_steps, option_lengths):
-        logging.info(f"> evaluation; ep {self.n_eps} done. avg_reward={avg_reward} | avg_episode_steps={avg_ep_steps} "\
+    def log_eval_episode(self, steps, avg_reward, avg_ep_steps, total_ep_steps, option_lengths):
+        logging.info(f"> evaluation; step {steps} done. avg_reward={avg_reward} | avg_episode_steps={avg_ep_steps} "\
             f"| hours={(time.time()-self.start_time) / 60 / 60:.3f}")
         self.writer.add_scalar(tag="eval/mean_ep_length", scalar_value=avg_ep_steps, global_step=self.n_eps)
         self.writer.add_scalar(tag='eval/mean_reward', scalar_value=avg_reward, global_step=self.n_eps)

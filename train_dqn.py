@@ -20,13 +20,14 @@ parser.add_argument('--device', default='cuda:0', help='What device should the m
 parser.add_argument('--save-freq', type=int, default=100000, help='how frequently should the model be checkpointed')
 parser.add_argument('--eval-freq', type=int, default=2000, help='how frequently should the model be evaluated')
 parser.add_argument('--logg-freq', type=int, default=8, help='how frequently should the model be logged')
-parser.add_argument('--eval-num', type=int, default=50, help='how many episodes per model evaluation')
+parser.add_argument('--eval-num', type=int, default=10, help='how many episodes per model evaluation')
 parser.add_argument('--training-num', type=int, default=1000000, help='how many episodes should the model be trained for')
-# custom model arguments
+# hyperparmaeters
+parser.add_argument('--lr', type=int, default=1e-5)
+# gamma, gae_lambda, clip_range, normalize_advantage,target_kl
 # run optimization
-parser.add_argument('--batch-size', type=int, default=256)
+parser.add_argument('--batch-size', type=int, default=512)
 parser.add_argument('--learning-starts', type=int, default=1000)
-#buffer size, learning_starts, train_freq
 
 
 args = parser.parse_args()
@@ -39,7 +40,9 @@ env = TetrisEnv(board_size=board_size, action_type=args.env_action_type, output_
 eval_env = Monitor(TetrisEnv(board_size=board_size, action_type=args.env_action_type, output_type=args.env_output, simplified=args.env_simplified, score_reward=args.env_score_reward, scale_reward=args.env_reward_scale, max_steps=args.env_max_step))
 
 # model and callbacks
-model = DQN("CnnPolicy", env, verbose=1, tensorboard_log=args.logdir, device=args.device)
+model = DQN("CnnPolicy", env, buffer_size=100000
+    learning_rate=args.lr, batch_size=args.batch_size, learning_starts=args.learning_starts,
+    verbose=1, tensorboard_log=args.logdir, device=args.device)
 checkpoint_callback = CheckpointCallback(save_freq=args.save_freq, save_path=model_folder)
 eval_callback = EvalCallback(eval_env, best_model_save_path=model_folder,
                              log_path=model_folder, eval_freq=args.eval_freq,

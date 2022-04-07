@@ -19,7 +19,7 @@ parser.add_argument('--device', default='cuda:0', help='What device should the m
 parser.add_argument('--save-freq', type=int, default=100000, help='how frequently should the model be checkpointed')
 parser.add_argument('--eval-freq', type=int, default=2000, help='how frequently should the model be evaluated')
 parser.add_argument('--logg-freq', type=int, default=8, help='how frequently should the model be logged')
-parser.add_argument('--eval-num', type=int, default=50, help='how many episodes per model evaluation')
+parser.add_argument('--eval-num', type=int, default=10, help='how many episodes per model evaluation')
 parser.add_argument('--training-num', type=int, default=1000000, help='how many episodes should the model be trained for')
 # custom model arguments
 

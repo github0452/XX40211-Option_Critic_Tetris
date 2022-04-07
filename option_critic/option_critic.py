@@ -208,7 +208,7 @@ class OptionCritic():
         action = self.option_critic.get_action(state, current_option, training=False)
         return action, current_option
 
-    def evaluate(self, evalCallback):
+    def evaluate(self, steps, evalCallback):
         # self.best_model_save_path = best_model_save_path
         rewards        = 0
         option_lengths = {opt:[] for opt in range(self.option_critic.num_options)}
@@ -243,7 +243,7 @@ class OptionCritic():
             total_ep_steps += ep_steps
         avg_reward = rewards / evalCallback.n_eval_episodes
         avg_ep_steps = total_ep_steps / evalCallback.n_eval_episodes
-        self.logger.log_eval_episode(avg_reward, avg_ep_steps, total_ep_steps, option_lengths)
+        self.logger.log_eval_episode(steps, avg_reward, avg_ep_steps, total_ep_steps, option_lengths)
         if avg_reward > evalCallback.best_reward:
             evalCallback.best_reward = avg_reward
             self.save(evalCallback.best_model_save_path + "best_model.zip")
@@ -322,7 +322,7 @@ class OptionCritic():
                 for cb in callback:
                     if steps % cb.freq == 0:
                         if isinstance(cb, EvalCallbackOptionCritic):
-                            self.evaluate(cb)
+                            self.evaluate(steps, cb)
                         elif isinstance(cb, CheckpointCallbackOptionCritic):
                             self.checkpoint(cb, steps)
             self.logger.log_train_episode(steps, rewards, option_lengths, ep_steps, num_rand, epsilon)
