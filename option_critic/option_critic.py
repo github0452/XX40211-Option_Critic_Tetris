@@ -25,7 +25,7 @@ class OptionCriticConv(nn.Module):
         self.in_channels = in_features
         self.num_actions = num_actions
         self.num_options = num_options
-        self.magic_number = 26496#7 * 7 * 64
+        self.magic_number = 46464#7 * 7 * 64
         self.device = device
 
         self.cnn_feature = nn.Sequential(
@@ -103,7 +103,7 @@ class OptionCritic():
     # parser.add_argument('--optimal-eps', type=float, default=0.05, help='Epsilon when playing optimally')
     # parser.add_argument('--frame-skip', default=4, type=int, help='Every how many frames to process')
     def __init__(self, env, num_options=2, temperature=1, seed=0, logdir='logs', entropy_reg=0.01, termination_reg=0.01,
-            update_frequency=4, freeze_interval=200, batch_size=32, buffer_size=1000000,
+            update_frequency=4, freeze_interval=200, batch_size=32, buffer_size=1000000, learning_starts=50000,
             epsilon_decay=20000, epsilon_min=0.1, epsilon_start=1.0, gamma=0.99, learning_rate=0.00000025, device='cuda:0'):
         self.env = env
         self.device = torch.device(device)
@@ -129,6 +129,7 @@ class OptionCritic():
         self.epsilon_start = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+        self.learning_starts = learning_starts
 
     def set_seed(self, seed):
         np.random.seed(seed)
@@ -297,7 +298,7 @@ class OptionCritic():
                 self.buffer.push(obs, current_option, reward, next_obs, game_over)
 
                 actor_loss, critic_loss = None, None
-                if len(self.buffer) > self.batch_size:
+                if len(self.buffer) > self.learning_starts:
                     actor_loss = self.calc_actor_loss(obs, current_option, logp, entropy, \
                         reward, game_over, next_obs)
                     loss = actor_loss
