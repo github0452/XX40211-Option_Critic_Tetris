@@ -13,7 +13,7 @@ from torch.distributions import Categorical, Bernoulli
 
 class OptionCriticConv(nn.Module):
     def __init__(self,
-                in_features,
+                observation_space,
                 num_actions,
                 num_options,
                 temperature=1.0,
@@ -22,10 +22,10 @@ class OptionCriticConv(nn.Module):
 
         super(OptionCriticConv, self).__init__()
 
-        self.in_channels = in_features
+        self.in_channels = observation_space[0]
         self.num_actions = num_actions
         self.num_options = num_options
-        self.magic_number = 46464#7 * 7 * 64
+        self.magic_number = 99264#20by10 99264 10by10 73920
         self.device = device
 
         self.cnn_feature = nn.Sequential(
@@ -50,6 +50,7 @@ class OptionCriticConv(nn.Module):
         if obs.ndim < 4:
             obs = obs.unsqueeze(0)
         obs = obs.to(self.device)
+        obs = torch.mul(obs, 1.0/255.0)
         state = self.cnn_feature(obs)
         return state
 
@@ -104,19 +105,19 @@ class OptionCritic():
     # parser.add_argument('--frame-skip', default=4, type=int, help='Every how many frames to process')
     def __init__(self, env, num_options=2, temperature=1, seed=0, logdir='logs', entropy_reg=0.01, termination_reg=0.01,
             update_frequency=4, freeze_interval=200, batch_size=32, buffer_size=1000000, learning_starts=50000,
-            epsilon_decay=20000, epsilon_min=0.1, epsilon_start=1.0, gamma=0.99, learning_rate=0.00000025, device='cuda:0'):
+            epsilon_decay=20000, epsilon_min=0.1, epsilon_start=1.0, gamma=0.99, lr=0.00000025, device='cuda:0'):
         self.env = env
         self.device = torch.device(device)
         self.seed = self.set_seed(seed)
         self.option_critic = OptionCriticConv(
-            in_features=3,
+            observation_space=env.observation_space.shape,
             num_actions=self.env.action_space.n,
             num_options=num_options,
             temperature=temperature,
             device=self.device
         )
         self.option_critic_prime = deepcopy(self.option_critic)
-        self.optim = torch.optim.RMSprop(self.option_critic.parameters(), lr=learning_rate)
+        self.optim = torch.optim.RMSprop(self.option_critic.parameters(), lr=lr)
 
         self.buffer = ReplayBuffer(capacity=buffer_size, seed=seed)
         self.logger = Logger(logdir=logdir, run_name=type(self).__name__)
@@ -130,6 +131,7 @@ class OptionCritic():
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.learning_starts = learning_starts
+        self.steps = 0
 
     def set_seed(self, seed):
         np.random.seed(seed)
@@ -216,6 +218,7 @@ class OptionCritic():
         total_ep_steps = 0
         for _ in range(evalCallback.n_eval_episodes):
             obs            = evalCallback.eval_env.reset()
+            obs = obs[0]
             game_over = False; ep_steps = 0; option_termination = True; current_option = None
             while not game_over:
                 state = self.option_critic.get_state_feature(torch.from_numpy(obs).float())
@@ -235,7 +238,8 @@ class OptionCritic():
                         current_option = self.option_critic.get_greedy_options(state).item()
                 # select action
                 action = self.option_critic.get_action(state, current_option, training=False)
-                next_obs, reward, game_over, _ = evalCallback.eval_env.step(action)
+                next_obs, reward, game_over, _ = evalCallback.eval_env.step([action])
+                next_obs = next_obs[0]; reward = reward[0]; game_over = game_over[0]
                 # update for next iteration
                 rewards += reward
                 ep_steps += 1
@@ -271,7 +275,7 @@ class OptionCritic():
         while steps < total_timesteps:
             rewards        = 0
             option_lengths = {opt:[] for opt in range(self.option_critic.num_options)}
-            obs            = self.env.reset()
+            obs            = self.env.reset()[0]
             game_over = False; ep_steps = 0; option_termination = True; current_option = None; num_rand = 0
             while not game_over:
                 # get state
@@ -282,7 +286,7 @@ class OptionCritic():
                 else:
                     option_termination = self.option_critic.predict_option_termination(state, current_option)
                 # if terminating, we want to determine current option, otherwise it remains the same
-                epsilon = self.calc_epsilon(steps)
+                epsilon = self.calc_epsilon(steps+self.steps)
                 if option_termination:
                     if current_option is not None:
                         option_lengths[current_option].append(curr_op_len)
@@ -294,7 +298,8 @@ class OptionCritic():
                         current_option = self.option_critic.get_greedy_options(state).item()
                 # select action
                 action, logp, entropy = self.option_critic.get_action(state, current_option, training=True)
-                next_obs, reward, game_over, _ = self.env.step(action)
+                next_obs, reward, game_over, _ = self.env.step([action])
+                next_obs = next_obs[0]; reward = reward[0]; game_over = game_over[0]
                 self.buffer.push(obs, current_option, reward, next_obs, game_over)
 
                 actor_loss, critic_loss = None, None
@@ -306,11 +311,11 @@ class OptionCritic():
                         data_batch = self.buffer.sample(self.batch_size)
                         critic_loss = self.calc_critic_loss(data_batch)
                         loss += critic_loss
+                    if steps % self.freeze_interval == 0:
+                        self.option_critic_prime.load_state_dict(self.option_critic.state_dict())
                     self.optim.zero_grad()
                     loss.backward()
                     self.optim.step()
-                    if steps % self.freeze_interval == 0:
-                        self.option_critic_prime.load_state_dict(self.option_critic.state_dict())
                 # update for current episode tracking
                 rewards += reward
                 ep_steps += 1
@@ -319,14 +324,15 @@ class OptionCritic():
                 # update for global tracking
                 steps += 1
                 if steps % log_interval == 0:
-                    self.logger.log_train_step(steps, actor_loss, critic_loss, entropy.item(), epsilon)
+                    self.logger.log_train_step(steps+self.steps, actor_loss, critic_loss, entropy.item(), epsilon)
                 for cb in callback:
                     if steps % cb.freq == 0:
                         if isinstance(cb, EvalCallbackOptionCritic):
-                            self.evaluate(steps, cb)
+                            self.evaluate(steps+self.steps, cb)
                         elif isinstance(cb, CheckpointCallbackOptionCritic):
-                            self.checkpoint(cb, steps)
-            self.logger.log_train_episode(steps, rewards, option_lengths, ep_steps, num_rand, epsilon)
+                            self.checkpoint(cb, steps+self.steps)
+            self.logger.log_train_episode(steps+self.steps, rewards, option_lengths, ep_steps, num_rand, epsilon)
+        self.steps += steps
 
 if __name__=="__main__":
     from tetris import TetrisEnv

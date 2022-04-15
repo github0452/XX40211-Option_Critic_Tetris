@@ -50,26 +50,26 @@ class Logger():
 
     def log_train_episode(self, steps, reward, option_lengths, ep_steps, num_rand, epsilon):
         self.n_eps += 1
-        # logging.info(f"> ep {self.n_eps} done. total_steps={steps} | reward={reward} | episode_steps={ep_steps} "\
-        #     f"| hours={(time.time()-self.start_time) / 60 / 60:.3f} | epsilon={epsilon:.3f}")
-        self.writer.add_scalar(tag="rollout/episodic_rewards", scalar_value=reward, global_step=self.n_eps)
-        self.writer.add_scalar(tag='rollout/episode_lengths', scalar_value=ep_steps, global_step=self.n_eps)
-        self.writer.add_scalar(tag='rollout/percentage_random_action', scalar_value=num_rand/ep_steps, global_step=self.n_eps)
+        logging.info(f"> step {steps} done. total_steps={steps} | reward={reward} | episode_steps={ep_steps} "\
+            f"| hours={(time.time()-self.start_time) / 60 / 60:.3f} | epsilon={epsilon:.3f}")
+        self.writer.add_scalar(tag="rollout/episodic_rewards", scalar_value=reward, global_step=steps)
+        self.writer.add_scalar(tag='rollout/episode_lengths', scalar_value=ep_steps, global_step=steps)
+        self.writer.add_scalar(tag='rollout/percentage_random_action', scalar_value=num_rand/ep_steps, global_step=steps)
         # Keep track of options statistics
         for option, lens in option_lengths.items():
             # Need better statistics for this one, point average is terrible in this case
-            self.writer.add_scalar(tag=f"rollout/options/option_{option}_avg_length", scalar_value=np.mean(lens) if len(lens)>0 else 0, global_step=self.n_eps)
-            self.writer.add_scalar(tag=f"rollout/options/option_{option}_active", scalar_value=sum(lens)/ep_steps, global_step=self.n_eps)
+            self.writer.add_scalar(tag=f"rollout/options/option_{option}_avg_length", scalar_value=np.mean(lens) if len(lens)>0 else 0, global_step=steps)
+            self.writer.add_scalar(tag=f"rollout/options/option_{option}_active", scalar_value=sum(lens)/ep_steps, global_step=steps)
 
     def log_eval_episode(self, steps, avg_reward, avg_ep_steps, total_ep_steps, option_lengths):
         logging.info(f"> evaluation; step {steps} done. avg_reward={avg_reward} | avg_episode_steps={avg_ep_steps} "\
             f"| hours={(time.time()-self.start_time) / 60 / 60:.3f}")
-        self.writer.add_scalar(tag="eval/mean_ep_length", scalar_value=avg_ep_steps, global_step=self.n_eps)
-        self.writer.add_scalar(tag='eval/mean_reward', scalar_value=avg_reward, global_step=self.n_eps)
+        self.writer.add_scalar(tag="eval/mean_ep_length", scalar_value=avg_ep_steps, global_step=steps)
+        self.writer.add_scalar(tag='eval/mean_reward', scalar_value=avg_reward, global_step=steps)
         # Keep track of options statistics
         for option, lens in option_lengths.items():
-            self.writer.add_scalar(tag=f"eval/options/option_{option}_avg_length", scalar_value=np.mean(lens) if len(lens)>0 else 0, global_step=self.n_eps)
-            self.writer.add_scalar(tag=f"eval/options/option_{option}_active", scalar_value=sum(lens)/total_ep_steps, global_step=self.n_eps)
+            self.writer.add_scalar(tag=f"eval/options/option_{option}_avg_length", scalar_value=np.mean(lens) if len(lens)>0 else 0, global_step=steps)
+            self.writer.add_scalar(tag=f"eval/options/option_{option}_active", scalar_value=sum(lens)/total_ep_steps, global_step=steps)
 
     def log_train_step(self, step, actor_loss, critic_loss, entropy, epsilon):
         if actor_loss:
