@@ -299,8 +299,8 @@ class GameState:
         # starting from top, keep shifting piece down
         while adj_y+self.curr_piece.y+self.curr_piece.y_dim < self.Y_BOARD and not self.check_collision(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y+adj_y+1):
             adj_y += 1
-        self.draw_piece(self.curr_piece.x, self.curr_piece.y+adj_y) # piece dropped is true
-        return adj_y, True
+        self.draw_piece(self.curr_piece.x, self.curr_piece.y+adj_y) # piece dropped
+        return adj_y+self.curr_piece.y_dim-self.curr_piece.y-1, True
 
     def soft_drop(self, gravity=1):
         adj_y = 0
@@ -309,11 +309,11 @@ class GameState:
             adj_y += 1
         self.curr_piece.y += adj_y
         if adj_y < gravity:
-            self.draw_piece(self.curr_piece.x, self.curr_piece.y) # piece dropped is true
-            return adj_y, True
+            self.draw_piece(self.curr_piece.x, self.curr_piece.y+adj_y) # piece dropped is true
+            return adj_y+self.curr_piece.y-self.curr_piece.y_dim-1, True
         else:
             self.RENDER.draw_ghost_piece(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y)
-            return adj_y, False
+            return 1, False
 
     def remove_completed_lines(self):
         completedLines = np.all(self.mini_board, axis=1)
@@ -385,7 +385,6 @@ class TetrisEnv(gym.Env):
         return state
 
     def step(self, action):
-        print("action_type", self.action_type)
         if self.action_type == 'grouped':
             x_index = int(action/4)
             rotation = action % 4
