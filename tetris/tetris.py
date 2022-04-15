@@ -4,66 +4,90 @@ import gym
 import gym.spaces as spaces
 import time
 
-class TetrisPiece:
-    def __init__(self, center, template):
-        self.template = np.array([list(row) for row in template], dtype=np.int8).astype(bool)
-        # self.template = np.flip(self.template)
-        self.cntr = center
+class TETRIMINO:
+    templates = []
+    adjs = []
+    centers = []
+
+    def __init__(self, rotation):
+        self.template = self.templates[rotation]
+        self.cntr = self.centers[rotation][1]
         self.y_dim, self.x_dim = self.template.shape
 
-I_SHAPE = [TetrisPiece(0, ["1",
-                           "1",
-                           "1",
-                           "1"]),
-           TetrisPiece(2, ["1111"])]
+class O_TETRIMINO(TETRIMINO):
+    template = np.ones((2, 2), dtype=np.int8).astype(bool)
+    templates = [template]
+    adjs = [(1,1)]
+    centers = [(1,1)]
 
-J_SHAPE = [TetrisPiece(1, ["100",
-                           "111"]),
-           TetrisPiece(0, ["11",
-                           "10",
-                           "10"]),
-           TetrisPiece(1, ["111",
-                           "001"]),
-           TetrisPiece(1, ["01",
-                           "01",
-                           "11"])]
+class I_TETRIMINO(TETRIMINO):
+    template = np.ones((1, 4), dtype=np.int8).astype(bool)
+    templates = [template, np.rot90(template)]
+    adjs = [(2,0),(0,2)]
+    centers = [(0,2),(2,0)]
 
-L_SHAPE = [TetrisPiece(1, ["001",
-                           "111"]),
-           TetrisPiece(0, ["10",
-                           "10",
-                           "11"]),
-           TetrisPiece(1, ["111",
-                           "100"]),
-           TetrisPiece(1, ["11",
-                           "01",
-                           "01"])]
+class S_TETRIMINO(TETRIMINO):
+    template = np.zeros((2, 3), dtype=np.int8).astype(bool)
+    template[0, :2] = 1
+    template[1, 1:] = 1
+    templates = [template, np.rot90(template)]
+    adjs = [(1,1),(1,2)]
+    centers = [(1,1),(1,0)]
 
-O_SHAPE = [TetrisPiece(1, ["11",
-                           "11"])]
+class Z_TETRIMINO(TETRIMINO):
+    template = np.zeros((2, 3), dtype=np.int8).astype(bool)
+    template[0, 1:] = 1
+    template[1, :2] = 1
+    templates = [template, np.rot90(template)]
+    adjs = [(1,1),(1,2)]
+    centers = [(1,1),(1,0)]
 
-S_SHAPE = [TetrisPiece(1, ["011",
-                           "110"]),
-           TetrisPiece(0, ["10",
-                           "11",
-                           "01"])]
+class L_TETRIMINO(TETRIMINO):
+    template = np.zeros((2, 3), dtype=np.int8).astype(bool)
+    template[0, 0] = 1
+    template[1, :] = 1
+    templates = [
+        template,
+        np.rot90(template, -1),
+        np.rot90(template, -2),
+        np.rot90(template, 1)
+    ]
+    adjs = [(1,1),(1,2),(2,1),(1,2)]
+    centers = [(1,1),(1,0),(0,1),(1,1)]
 
-T_SHAPE = [TetrisPiece(1, ["010",
-                           "111"]),
-           TetrisPiece(0, ["10",
-                           "11",
-                           "10"]),
-           TetrisPiece(1, ["111",
-                           "010"]),
-           TetrisPiece(1, ["01",
-                           "11",
-                           "01"])]
+class J_TETRIMINO(TETRIMINO):
+    template = np.zeros((2, 3), dtype=np.int8).astype(bool)
+    template[0, 2] = 1
+    template[1, :] = 1
+    templates = [
+        template,
+        np.rot90(template, -1),
+        np.rot90(template, -2),
+        np.rot90(template, 1)
+    ]
+    adjs = [(1,1),(1,2),(2,1),(1,1)]
+    centers = [(1,1),(1,0),(0,1),(1,1)]
 
-Z_SHAPE = [TetrisPiece(1, ["110",
-                           "011"]),
-           TetrisPiece(1, ["01",
-                           "11",
-                           "10"])]
+class T_TETRIMINO(TETRIMINO):
+    template = np.zeros((2, 3), dtype=np.int8).astype(bool)
+    template[0, 1] = 1
+    template[1, :] = 1
+    templates = [
+        template,
+        np.rot90(template, -1),
+        np.rot90(template, -2),
+        np.rot90(template, 1)
+    ]
+    adjs = [(1,1),(1,2),(2,1),(1,1)]
+    centers = [(1,1),(1,0),(0,1),(1,1)]
+
+I_SHAPE = [I_TETRIMINO(0), I_TETRIMINO(1)]
+J_SHAPE = [J_TETRIMINO(0), J_TETRIMINO(1), J_TETRIMINO(2), J_TETRIMINO(3)]
+L_SHAPE = [L_TETRIMINO(0), L_TETRIMINO(1), L_TETRIMINO(2), L_TETRIMINO(3)]
+O_SHAPE = [O_TETRIMINO(0)]
+S_SHAPE = [S_TETRIMINO(0), S_TETRIMINO(1)]
+T_SHAPE = [T_TETRIMINO(0), T_TETRIMINO(1), T_TETRIMINO(2), T_TETRIMINO(3)]
+Z_SHAPE = [Z_TETRIMINO(0), Z_TETRIMINO(1)]
 
 #               R    G    B
 WHITE       = (255, 255, 255)
@@ -81,6 +105,8 @@ LIGHTYELLOW = (255, 255,  128)
 COLORS      = (     BLUE,      GREEN,      RED,      YELLOW)
 LIGHTCOLORS = (LIGHTBLUE, LIGHTGREEN, LIGHTRED, LIGHTYELLOW)
 assert len(COLORS) == len(LIGHTCOLORS) # each color must have light color
+
+
 
 class DrawBoard:
     def __init__(self, board_size):
