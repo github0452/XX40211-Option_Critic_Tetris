@@ -281,15 +281,6 @@ class GameState:
             x = np.clip(x, 0, self.X_BOARD - self.curr_piece.x_dim)
         self.curr_piece.x=x
 
-    def shift_piece_down(self, gravity=1):
-        if self.curr_piece.y+self.curr_piece.y_dim < self.Y_BOARD and not self.check_collision(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y+1):
-            self.curr_piece.y = min(self.Y_BOARD, self.curr_piece.y+gravity)
-            self.RENDER.draw_ghost_piece(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y)
-            return 1, False
-        else:
-            self.draw_piece(self.curr_piece.x, self.curr_piece.y)
-            return self.curr_piece.y-self.curr_piece.y_dim-1, True
-
     def rotate_piece(self, rotate):
         if rotate == 'L':
             self.curr_piece.rotate_left()
@@ -308,18 +299,21 @@ class GameState:
         # starting from top, keep shifting piece down
         while adj_y+self.curr_piece.y+self.curr_piece.y_dim < self.Y_BOARD and not self.check_collision(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y+adj_y+1):
             adj_y += 1
-        self.draw_piece(self.curr_piece.x, self.curr_piece.y+adj_y)
-        return adj_y+self.curr_piece.y_dim-self.curr_piece.y-1, True
+        self.draw_piece(self.curr_piece.x, self.curr_piece.y+adj_y) # piece dropped is true
+        return adj_y, True
 
-    def soft_drop(self):
+    def soft_drop(self, gravity=1):
+        adj_y = 0
         # starting from top, keep shifting piece down
-        if self.curr_piece.y+self.curr_piece.y_dim < self.Y_BOARD and not self.check_collision(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y+1):
-            self.curr_piece.y += 1
-            self.RENDER.draw_ghost_piece(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y)
-            return 1, False
+        while adj_y < gravity and adj_y+self.curr_piece.y+self.curr_piece.y_dim < self.Y_BOARD and not self.check_collision(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y+adj_y+1):
+            adj_y += 1
+        self.curr_piece.y += adj_y
+        if adj_y < gravity:
+            self.draw_piece(self.curr_piece.x, self.curr_piece.y) # piece dropped is true
+            return adj_y, True
         else:
-            self.draw_piece(self.curr_piece.x, self.curr_piece.y)
-            return self.curr_piece.y-self.curr_piece.y_dim-1, True
+            self.RENDER.draw_ghost_piece(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y)
+            return adj_y, False
 
     def remove_completed_lines(self):
         completedLines = np.all(self.mini_board, axis=1)
@@ -391,6 +385,7 @@ class TetrisEnv(gym.Env):
         return state
 
     def step(self, action):
+        print("action_type", self.action_type)
         if self.action_type == 'grouped':
             x_index = int(action/4)
             rotation = action % 4
@@ -404,13 +399,13 @@ class TetrisEnv(gym.Env):
             else:
                 rotate_left = action == self.state.X_BOARD
                 self.state.rotate_piece(left=rotate_left)
-                shifted_down, piece_dropped = self.state.shift_piece_down()
+                shifted_down, piece_dropped = self.state.soft_drop()
         elif self.action_type == 'standard':
             # actions = {0:'rotate_left', 1: 'rotate_right', 2: 'hard_drop', 3: 'soft_drop', 4:'move_left', 5: 'move_right'}
             if action < 2:
                 rotate = 'L' if action == 0 else 'R'
                 self.state.rotate_piece(rotate)
-                shifted_down, piece_dropped = self.state.shift_piece_down()
+                shifted_down, piece_dropped = self.state.soft_drop()
             elif action == 2:
                 shifted_down, piece_dropped = self.state.hard_drop()
             elif action == 3:
@@ -418,7 +413,7 @@ class TetrisEnv(gym.Env):
             else:
                 adj_x = -1 if action == 4 else 1
                 self.state.move_curr_piece(adj_x)
-                shifted_down, piece_dropped = self.state.shift_piece_down()
+                shifted_down, piece_dropped = self.state.soft_drop()
         elif self.action_type == 'simplified':
             self.state.set_curr_piece(action, force_on=True)
             shifted_down, piece_dropped = self.state.hard_drop()
