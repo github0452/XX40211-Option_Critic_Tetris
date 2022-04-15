@@ -242,7 +242,9 @@ class GameState:
 
         self.curr_piece = None; self.next_piece = None
         self.lock_delay = True
-        self.cycle_pieces()
+        self._cycle_pieces()
+        self.RENDER.draw_curr_box(self.curr_piece.template)
+        self.RENDER.draw_next_box(self.next_piece.template)
         self.RENDER.draw_ghost_piece(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y)
 
     def get_new_piece(self):
@@ -253,12 +255,17 @@ class GameState:
         piece = PieceTracker(self.TETRIMINOS[letter], x=int(self.X_BOARD/2))
         return piece
 
-    def cycle_pieces(self):
+    def _cycle_pieces(self):
         if self.next_piece is not None:
             self.curr_piece = self.next_piece
         else:
             self.curr_piece = self.get_new_piece()
         self.next_piece = self.get_new_piece()
+
+    def _land_piece(self, x, y=0):
+        self.mini_board[y:self.curr_piece.y_dim+y, x:self.curr_piece.x_dim+x] |= self.curr_piece.template # place piece using logical or
+        self.RENDER.draw_landed_piece(self.curr_piece, x, y)
+        self._cycle_pieces()
         self.RENDER.draw_curr_box(self.curr_piece.template)
         self.RENDER.draw_next_box(self.next_piece.template)
         self.RENDER.draw_ghost_piece(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y)
@@ -267,10 +274,6 @@ class GameState:
     def check_collision(self, piece, x, y):
         collisions = np.logical_and(piece, self.mini_board[y:y+piece.shape[0],x:x+piece.shape[1]])
         return collisions.any()
-
-    def draw_piece(self, x, y=0):
-        self.mini_board[y:self.curr_piece.y_dim+y, x:self.curr_piece.x_dim+x] |= self.curr_piece.template # place piece using logical or
-        self.RENDER.draw_landed_piece(self.curr_piece, x, y)
 
     def set_piece_rotation(self, rotation):
         self.curr_piece.set_rotation(rotation)
@@ -299,8 +302,8 @@ class GameState:
         # starting from top, keep shifting piece down
         while adj_y+self.curr_piece.y+self.curr_piece.y_dim < self.Y_BOARD and not self.check_collision(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y+adj_y+1):
             adj_y += 1
-        self.draw_piece(self.curr_piece.x, self.curr_piece.y+adj_y) # piece dropped
-        return adj_y+self.curr_piece.y_dim-self.curr_piece.y-1, self.cycle_pieces()
+        game_over = self._land_piece(self.curr_piece.x, self.curr_piece.y+adj_y) # piece dropped
+        return adj_y+self.curr_piece.y_dim-self.curr_piece.y-1, game_over
 
     def soft_drop(self, gravity=1):
         adj_y = 0
@@ -309,8 +312,8 @@ class GameState:
             adj_y += 1
         self.curr_piece.y += adj_y
         if adj_y < gravity:
-            self.draw_piece(self.curr_piece.x, self.curr_piece.y+adj_y) # piece dropped is true
-            return adj_y+self.curr_piece.y-self.curr_piece.y_dim-1, self.cycle_pieces()
+            game_over = self._land_piece(self.curr_piece.x, self.curr_piece.y+adj_y) # piece dropped is true
+            return adj_y+self.curr_piece.y-self.curr_piece.y_dim-1, game_over
         else:
             self.RENDER.draw_ghost_piece(self.curr_piece.template, self.curr_piece.x, self.curr_piece.y)
             return 1, False
