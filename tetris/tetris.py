@@ -169,9 +169,9 @@ class DrawBoard:
         self.EMPTY_BOARD[self.BOARD_SLICE] = self.EMPTYBOX_COLOR
         self.EMPTY_BOARD[self.CURR_SLICE[0]:self.CURR_SLICE[0]+piece_box, self.CURR_SLICE[1]:self.CURR_SLICE[1]+piece_box] = self.EMPTYBOX_COLOR
         self.EMPTY_BOARD[self.NEXT_SLICE[0]:self.NEXT_SLICE[0]+piece_box, self.NEXT_SLICE[1]:self.NEXT_SLICE[1]+piece_box] = self.EMPTYBOX_COLOR
-        # self.EMPTY_BOARD[self.HOLD_SLICE[0]:self.HOLD_SLICE[0]+piece_box, self.HOLD_SLICE[1]:self.HOLD_SLICE[1]+piece_box] = self.EMPTYBOX_COLOR
-        # self.EMPTY_BOARD[self.LEVEL_SLICE[0]:self.LEVEL_SLICE[0]+self.BOX_SIZE, self.LEVEL_SLICE[1]:self.LEVEL_SLICE[1]+piece_box] = self.EMPTYBOX_COLOR
-        # self.EMPTY_BOARD[self.COMBO_SLICE[0]:self.COMBO_SLICE[0]+self.BOX_SIZE, self.COMBO_SLICE[1]:self.COMBO_SLICE[1]+piece_box] = self.EMPTYBOX_COLOR
+        self.EMPTY_BOARD[self.HOLD_SLICE[0]:self.HOLD_SLICE[0]+piece_box, self.HOLD_SLICE[1]:self.HOLD_SLICE[1]+piece_box] = self.EMPTYBOX_COLOR
+        self.EMPTY_BOARD[self.LEVEL_SLICE[0]:self.LEVEL_SLICE[0]+self.BOX_SIZE, self.LEVEL_SLICE[1]:self.LEVEL_SLICE[1]+piece_box] = self.EMPTYBOX_COLOR
+        self.EMPTY_BOARD[self.COMBO_SLICE[0]:self.COMBO_SLICE[0]+self.BOX_SIZE, self.COMBO_SLICE[1]:self.COMBO_SLICE[1]+piece_box] = self.EMPTYBOX_COLOR
         # tetris box patterns
         self.PATTERN_1 = np.zeros((self.BOX_SIZE, self.BOX_SIZE), dtype=bool)
         self.PATTERN_1[1:,1:] = True
@@ -213,20 +213,17 @@ class DrawBoard:
         self.draw_boxes(next, slice, self.CURRENT_PIECE_COLOR)
 
     def draw_hold_box(self, hold, y_adj, x_adj):
-        pass
-        # self.screen[self.HOLD_SLICE[0]:self.HOLD_SLICE[0]+self.BOX_SIZE*4,self.HOLD_SLICE[1]:self.HOLD_SLICE[1]+self.BOX_SIZE*4] = 0
-        # slice = np.s_[self.HOLD_SLICE[0]+y_adj*self.BOX_SIZE:self.HOLD_SLICE[0]+self.BOX_SIZE*4,self.HOLD_SLICE[1]+x_adj*self.BOX_SIZE:self.HOLD_SLICE[1]+self.BOX_SIZE*4]
-        # self.draw_boxes(hold, slice, self.CURRENT_PIECE_COLOR)
+        self.screen[self.HOLD_SLICE[0]:self.HOLD_SLICE[0]+self.BOX_SIZE*4,self.HOLD_SLICE[1]:self.HOLD_SLICE[1]+self.BOX_SIZE*4] = 0
+        slice = np.s_[self.HOLD_SLICE[0]+y_adj*self.BOX_SIZE:self.HOLD_SLICE[0]+self.BOX_SIZE*4,self.HOLD_SLICE[1]+x_adj*self.BOX_SIZE:self.HOLD_SLICE[1]+self.BOX_SIZE*4]
+        self.draw_boxes(hold, slice, self.CURRENT_PIECE_COLOR)
 
     def draw_combo_slice(self, combo):
-        pass
-        # self.screen[self.COMBO_SLICE[0]:self.COMBO_SLICE[0]+self.BOX_SIZE, self.COMBO_SLICE[1]:self.COMBO_SLICE[1]+self.BOX_SIZE*4] = self.EMPTYBOX_COLOR
-        # self.screen[self.COMBO_SLICE[0]:self.COMBO_SLICE[0]+self.BOX_SIZE, self.COMBO_SLICE[1]:self.COMBO_SLICE[1]+int(self.BOX_SIZE*4*combo/10)] = self.CURRENT_PIECE_COLOR
+        self.screen[self.COMBO_SLICE[0]:self.COMBO_SLICE[0]+self.BOX_SIZE, self.COMBO_SLICE[1]:self.COMBO_SLICE[1]+self.BOX_SIZE*4] = self.EMPTYBOX_COLOR
+        self.screen[self.COMBO_SLICE[0]:self.COMBO_SLICE[0]+self.BOX_SIZE, self.COMBO_SLICE[1]:self.COMBO_SLICE[1]+int(self.BOX_SIZE*4*combo/10)] = self.CURRENT_PIECE_COLOR
 
     def draw_level_slice(self, level):
-        pass
-        # self.screen[self.LEVEL_SLICE[0]:self.LEVEL_SLICE[0]+self.BOX_SIZE, self.LEVEL_SLICE[1]:self.LEVEL_SLICE[1]+self.BOX_SIZE*4] = self.EMPTYBOX_COLOR
-        # self.screen[self.LEVEL_SLICE[0]:self.LEVEL_SLICE[0]+self.BOX_SIZE, self.LEVEL_SLICE[1]:self.LEVEL_SLICE[1]+int(self.BOX_SIZE*4*level/10)] = self.CURRENT_PIECE_COLOR
+        self.screen[self.LEVEL_SLICE[0]:self.LEVEL_SLICE[0]+self.BOX_SIZE, self.LEVEL_SLICE[1]:self.LEVEL_SLICE[1]+self.BOX_SIZE*4] = self.EMPTYBOX_COLOR
+        self.screen[self.LEVEL_SLICE[0]:self.LEVEL_SLICE[0]+self.BOX_SIZE, self.LEVEL_SLICE[1]:self.LEVEL_SLICE[1]+int(self.BOX_SIZE*4*level/10)] = self.CURRENT_PIECE_COLOR
 
     def undraw_ghost_piece(self):
         if self.PREV_GHOST_SLICE is not None:
