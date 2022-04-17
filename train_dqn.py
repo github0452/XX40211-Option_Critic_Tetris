@@ -10,11 +10,10 @@ from stable_baselines3.common.vec_env import VecFrameStack
 parser = argparse.ArgumentParser(description="Option Critic PyTorch")
 # environment arguments
 parser.add_argument('--env-size', default='20,10', help='size of the board')
-parser.add_argument('--env-simplified', type=bool, default=False, help='simplified version of the game')
 parser.add_argument('--env-action-type', default='grouped', help='type of the action to take [grouped, semigrouped, standard]')
-parser.add_argument('--env-output', default='image', help='what the env output is')
-parser.add_argument('--env-score-reward', type=bool, default=True, help='whether the output should be score instead of just lines cleared')
-parser.add_argument('--env-reward-scale',type=float, default=1.0, help='Should the reward be scaled')
+parser.add_argument('--env-reward-type', default='standard', help='what the reward type should be [standard, no piece drop, only lines, num lines]')
+parser.add_argument('--env-reward-scaling', default=None, help='Should the reward be scaled [multi, log]')
+parser.add_argument('--env-max-step', default=18000, help='Maximum steps in environment (to prevent infinite runs)')
 # learning arguments
 parser.add_argument('--logdir', default='logs/test/', help='where should stuff be logged')
 parser.add_argument('--device', default='cuda:0', help='What device should the model be trained on')
@@ -34,7 +33,7 @@ reward_scaling=None
 
 def make_env(board_size, args, seed=0):
     def _init():
-        env = TetrisEnv(board_size=board_size, action_type=args.env_action_type, reward_type=reward_type, max_steps=env_max_step, reward_scaling=reward_scaling)
+        env = TetrisEnv(board_size=board_size, action_type=args.env_action_type, reward_type=args.env_reward_type, max_steps=args.env_max_steps, reward_scaling=args.env_reward_scaling)
         return env
     return _init
 

@@ -461,13 +461,10 @@ class GameState:
             additional_score += self.LINE_MULTI[cleared_lines] * level  # updating score for cleared lines
             if self.combo > -1:
                 additional_score += 50 * self.COMBO_MULTI[min(self.combo,self.MAX_COMBO)] * level # updating score for combos
-            additional_score += piece_fallen
-            # if soft_drop:
-            #     additional_score += piece_fallen * self.SOFT_DROP_SCORE # how much the piece has fallen
-            #     print("Soft drop score", piece_fallen * self.SOFT_DROP_SCORE)
-            # if hard_drop:
-            #     additional_score += piece_fallen * self.HARD_DROP_SCORE
-            #     print("Hard drop score", piece_fallen)
+            if soft_drop:
+                additional_score += piece_fallen * self.SOFT_DROP_SCORE # how much the piece has fallen
+            if hard_drop:
+                additional_score += piece_fallen * self.HARD_DROP_SCORE
             additional_score += cleared_lines
         elif reward_type == 'no piece drop':
             additional_score += self.LINE_MULTI[cleared_lines] * level  # updating score for cleared lines
