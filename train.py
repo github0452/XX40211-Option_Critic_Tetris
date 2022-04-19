@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 from tetris.tetris import TetrisEnv
 from stable_baselines3 import PPO, DQN
 from option_critic.option_critic import OptionCritic, EvalCallbackOptionCritic, CheckpointCallbackOptionCritic
@@ -85,6 +86,7 @@ parser.add_argument('--options', type=int, default=8, help='how many options')
 
 args = parser.parse_args()
 model_folder = args.logdir + args.model_type + "/"
+Path("model_folder").mkdir(parents=True, exist_ok=True)
 board_size = tuple([int(i) for i in args.env_size.split(',')])
 
 num_cpu = 1
