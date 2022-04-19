@@ -1,17 +1,17 @@
 import argparse
 from tetris.tetris import TetrisEnv
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, DQN
+from option_critic.option_critic import OptionCritic, EvalCallbackOptionCritic, CheckpointCallbackOptionCritic
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
-def create_env(args):
+def create_env(args, num_cpu=1):
     def make_env(board_size, args, seed=0):
         def _init():
             env = TetrisEnv(board_size=board_size, action_type=args.env_action_type, reward_type=args.env_reward_type, max_steps=args.env_max_steps, reward_scaling=args.env_reward_scaling)
             return env
         return _init
-    num_cpu = 1
     env = DummyVecEnv([make_env(board_size, args) for i in range(num_cpu)])
     eval_env = DummyVecEnv([make_env(board_size, args) for i in range(num_cpu)])
     return env, eval_env
@@ -74,7 +74,7 @@ parser.add_argument('--env-max-steps', default=18000, help='Maximum steps in env
 # learning arguments
 parser.add_argument('--logdir', default='logs/test/', help='where should stuff be logged')
 parser.add_argument('--device', default='cuda:0', help='What device should the model be trained on')
-parser.add_argument('--save-freq', type=int, default=500000, help='how frequently should the model be checkpointed')
+parser.add_argument('--save-freq', type=int, default=200000, help='how frequently should the model be checkpointed')
 parser.add_argument('--eval-freq', type=int, default=2000, help='how frequently should the model be evaluated')
 parser.add_argument('--logg-freq', type=int, default=100, help='how frequently should the model be logged')
 parser.add_argument('--eval-num', type=int, default=10, help='how many episodes per model evaluation')
@@ -86,12 +86,9 @@ parser.add_argument('--options', type=int, default=8, help='how many options')
 args = parser.parse_args()
 model_folder = args.logdir + args.model_type + "/"
 board_size = tuple([int(i) for i in args.env_size.split(',')])
-save_freq    = max(args.save_freq // num_cpu, 1)
-eval_freq    = max(args.eval_freq // num_cpu, 1)
-logg_freq    = max(args.logg_freq // num_cpu, 1)
-training_num = max(args.training_num // num_cpu, 1)
 
-env, eval_env = create_env(args)
+num_cpu = 1
+env, eval_env = create_env(args, num_cpu)
 
 if args.model_type == "PPO":
     model = create_PPO_Model(model_folder, args.device)
@@ -102,9 +99,19 @@ elif args.model_type == "Option":
 else:
     raise ValueError('Model type not recognized.')
 
-checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_folder)
-eval_callback = EvalCallback(eval_env, best_model_save_path=model_folder,
-                             log_path=model_folder, eval_freq=eval_freq,
-                             deterministic=False, render=False, n_eval_episodes=args.eval_num)
+save_freq    = max(args.save_freq // num_cpu, 1)
+eval_freq    = max(args.eval_freq // num_cpu, 1)
+logg_freq    = max(args.logg_freq // num_cpu, 1)
+training_num = max(args.training_num // num_cpu, 1)
+if args.model_type == "Option":
+    checkpoint_callback = CheckpointCallbackOptionCritic(freq=save_freq, save_path=model_folder)
+    eval_callback = EvalCallbackOptionCritic(eval_env, best_model_save_path=model_folder,
+                                 log_path=model_folder, freq=eval_freq,
+                                 deterministic=False, n_eval_episodes=args.eval_num)
+else:
+    checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_folder)
+    eval_callback = EvalCallback(eval_env, best_model_save_path=model_folder,
+                                 log_path=model_folder, eval_freq=eval_freq,
+                                 deterministic=False, render=False, n_eval_episodes=args.eval_num)
 model.learn(total_timesteps=training_num, log_interval=logg_freq, callback=[checkpoint_callback, eval_callback])
 model.save(model_folder + "/final_model")
