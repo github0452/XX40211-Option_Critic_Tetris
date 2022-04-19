@@ -25,7 +25,12 @@ class OptionCriticConv(nn.Module):
         self.in_channels = observation_space[0]
         self.num_actions = num_actions
         self.num_options = num_options
-        self.magic_number = 99264#20by10 99264 10by10 73920
+        if observation_space[1] == 10 and observation_space[2] == 10:
+            self.magic_number = 73920
+        elif observation_space[1] == 20 and observation_space[2] == 10:
+            self.magic_number = 99264
+        else:
+            raise ValueError('Unconfigured board size for conv net.')
         self.device = device
 
         self.cnn_feature = nn.Sequential(
