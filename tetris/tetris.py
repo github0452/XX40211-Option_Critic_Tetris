@@ -4,11 +4,13 @@ import gym
 import gym.spaces as spaces
 import time
 import math
+import torch
 
 class TETRIMINO(object):
     templates = []
     adjs = []
     centers = []
+    type = ""
 
     def __init__(self, x, y=0, rotation=0):
         self.y = y + self.adjs[rotation][0]
@@ -45,12 +47,14 @@ class O_TETRIMINO(TETRIMINO):
     templates = [template]
     adjs = [(1,1)]
     centers = [(1,1)]
+    type = "O"
 
 class I_TETRIMINO(TETRIMINO):
     template = np.ones((1, 4), dtype=np.int8).astype(bool)
     templates = [template, np.rot90(template)]
     adjs = [(2,0),(0,2)]
     centers = [(0,2),(2,0)]
+    type = "I"
 
 class S_TETRIMINO(TETRIMINO):
     template = np.zeros((2, 3), dtype=np.int8).astype(bool)
@@ -59,6 +63,7 @@ class S_TETRIMINO(TETRIMINO):
     templates = [template, np.rot90(template)]
     adjs = [(1,1),(1,2)]
     centers = [(1,1),(1,0)]
+    type = "S"
 
 class Z_TETRIMINO(TETRIMINO):
     template = np.zeros((2, 3), dtype=np.int8).astype(bool)
@@ -67,6 +72,7 @@ class Z_TETRIMINO(TETRIMINO):
     templates = [template, np.rot90(template)]
     adjs = [(1,1),(1,2)]
     centers = [(1,1),(1,0)]
+    type = "Z"
 
 class L_TETRIMINO(TETRIMINO):
     template = np.zeros((2, 3), dtype=np.int8).astype(bool)
@@ -80,6 +86,7 @@ class L_TETRIMINO(TETRIMINO):
     ]
     adjs = [(1,1),(1,2),(2,1),(1,2)]
     centers = [(1,1),(1,0),(0,1),(1,1)]
+    type = "L"
 
 class J_TETRIMINO(TETRIMINO):
     template = np.zeros((2, 3), dtype=np.int8).astype(bool)
@@ -93,6 +100,7 @@ class J_TETRIMINO(TETRIMINO):
     ]
     adjs = [(1,1),(1,2),(2,1),(1,1)]
     centers = [(1,1),(1,0),(0,1),(1,1)]
+    type = "J"
 
 class T_TETRIMINO(TETRIMINO):
     template = np.zeros((2, 3), dtype=np.int8).astype(bool)
@@ -106,6 +114,7 @@ class T_TETRIMINO(TETRIMINO):
     ]
     adjs = [(1,1),(1,2),(2,1),(1,1)]
     centers = [(1,1),(1,0),(0,1),(1,1)]
+    type = "T"
 
 class TETRIMINO_BAG:
     def __init__(self, squares_only=False, spawn_x=3):
@@ -297,6 +306,7 @@ class GameState:
     # this function should be called when the current piece has landed - game over when a piece is placed in the vanish zone or a piece cannot spawn
     def _land_tetris(self, x, y=0):
         self.mini_board[y:self.curr.y_dim+y, x:self.curr.x_dim+x] |= self.curr.template # place piece using logical or
+        self.previous_landing_height = self.Y_BOARD - y # location of the top of the piece
         self.RENDER.undraw_ghost_piece()
         if y < 2:
             placed_in_vanish = True
@@ -315,17 +325,18 @@ class GameState:
     # this function should be called during an action to set the rotation
     def set_piece_rotation(self, rotation):
         difference = rotation - self.curr.rotation
-        if difference > 0:
-            for _ in range(difference):
-                self.step_rotate_piece(direction='R')
-        elif difference < 0:
-            for _ in range(difference):
-                self.step_rotate_piece(direction='L')
+        for _ in range(max(difference, -difference)):
+            success = self.step_rotate_piece('R' if difference > 0 else 'L')
+            if not success:
+                break
 
     # this function should be called during an action to set the piece x index
     def set_piece_x(self, x):
-        self.curr.x = np.clip(x-self.curr.x_cnt, 0, self.X_BOARD-self.curr.x_dim)
-        return self._check_collision(self.curr.x, self.curr.y)
+        difference = x - self.curr.x
+        for _ in range(max(difference, -difference)):
+            success = self.step_move_piece_x('R' if difference > 0 else 'L')
+            if not success:
+                break
 
     def step_hold_action(self):
         if self.can_hold_piece:
@@ -359,12 +370,13 @@ class GameState:
         prev_rotation = self.curr.rotation
         self.curr.rotate(direction)
         curr_rotation = self.curr.rotation
+        success = True
         # check if position is in, if it isnt in, then we need to wallkick
         if not 0 <= self.curr.x <= self.X_BOARD-self.curr.x_dim or not 0 <= self.curr.y <= self.Y_BOARD-self.curr.y_dim or self._check_collision(self.curr.x, self.curr.y):
             # O should never get here
-            if isinstance(type(self.curr), O_TETRIMINO):
+            if self.curr.type == "O":
                 raise ValueError('O Tetrimino failed to rotate')
-            elif isinstance(type(self.curr), I_TETRIMINO):
+            elif self.curr.type == "I":
                 SRS = {
                     '0>>1': [(-2,0),(1,0),(-2,-1),(1,2)],
                     '1>>0': [(2,0),(-1,0),(2,1),(-1,-2)],
@@ -401,11 +413,16 @@ class GameState:
         # otherwise
         self.RENDER.draw_curr_box(self.curr.template, self.curr.y_adj, self.curr.x_adj)
         self._draw_ghost_piece()
+        return success
 
-    def step_move_piece_x(self, adj):
-        self.RENDER.undraw_ghost_piece()
-        self.curr.x = np.clip(self.curr.x+adj, 0, self.X_BOARD-self.curr.x_dim)
-        self._draw_ghost_piece()
+    def step_move_piece_x(self, direction='L'):
+        adj = -1 if direction == 'L' else 1
+        if 0 <= self.curr.x+adj < self.X_BOARD-self.curr.x_dim and not self._check_collision(self.curr.x+adj, self.curr.y):
+            self.RENDER.undraw_ghost_piece()
+            self.curr.x = np.clip(self.curr.x+adj, 0, self.X_BOARD-self.curr.x_dim)
+            self._draw_ghost_piece()
+            return True
+        return False
 
     # starting from top, keep shifting piece down and then place it
     def step_hard_drop(self):
@@ -509,6 +526,7 @@ class TetrisEnv(gym.Env):
             raise ValueError('Action type not recognised.')
         self.action_space = spaces.Discrete(len(self._action_set))
         self.observation_space = spaces.Box(low=0, high=255, shape=self.state.screen_dim(), dtype=np.uint8)
+        # self.observation_space = spaces.Box(low=0, high=1e3, shape=(1,62))
         self.reward_type = reward_type
         self.reward_scaling = reward_scaling
         self.steps = 0
@@ -525,18 +543,13 @@ class TetrisEnv(gym.Env):
         self.state.reset()
         self.steps = 0
         state = self.state.get_board(scale=True)
+        # state = self.state._get_feature_set()
         return state
 
     def step(self, action):
         soft_drop = False
         hard_drop = False
         if self.action_type == 'grouped':
-            # if action == self.state.X_BOARD*4:
-            #     game_over = self.state.step_hold_action()
-            #     shifted_down = 0
-            #     if not game_over:
-            #         shifted_down, game_over = self.state.step_soft_drop()
-            # else:
             x_index = int(action/4); rotation = action % 4
             game_over = self.state.set_piece_x(x_index)
             shifted_down = 0
@@ -549,15 +562,10 @@ class TetrisEnv(gym.Env):
                 self.state.set_piece_x(action)
                 shifted_down, game_over = self.state.step_hard_drop()
                 hard_drop = True
-            elif action < self.state.X_BOARD+2:
+            else:
                 rotate = 'L' if action == self.state.X_BOARD else 'R'
                 self.state.step_rotate_piece(rotate)
                 shifted_down, game_over = self.state.step_soft_drop()
-            else:
-                game_over = self.state.step_hold_action()
-                shifted_down = 0
-                if not game_over:
-                    shifted_down, game_over = self.state.step_soft_drop()
         elif self.action_type == 'standard':
             # actions = {0:'rotate_left', 1: 'rotate_right', 2: 'hard_drop', 3: 'soft_drop', 4:'move_left', 5: 'move_right'}
             if action < 2:
@@ -570,27 +578,17 @@ class TetrisEnv(gym.Env):
             elif action == 3:
                 shifted_down, game_over = self.state.step_soft_drop(gravity=2)
                 soft_drop = True
-            elif action == 4 or action == 5:
-                x_adj = -1 if action == 4 else 1
+            else:
+                x_adj = 'L' if action == 4 else 'R'
                 self.state.step_move_piece_x(x_adj)
                 shifted_down, game_over = self.state.step_soft_drop()
-            else:
-                game_over = self.state.step_hold_action()
-                shifted_down = 0
-                if not game_over:
-                    shifted_down, game_over = self.state.step_soft_drop()
         elif self.action_type == 'simplified':
-            if action < self.state.X_BOARD:
-                self.state.set_piece_x(action)
-                shifted_down, game_over = self.state.step_hard_drop()
-            else:
-                game_over = self.state.step_hold_action()
-                shifted_down = 0
-                if not game_over:
-                    shifted_down, game_over = self.state.step_soft_drop()
+            self.state.set_piece_x(action)
+            shifted_down, game_over = self.state.step_hard_drop()
         cleared = self.state.remove_completed_lines()
         reward = self.state.update_score(shifted_down, cleared, reward_type=self.reward_type, reward_scaling=self.reward_scaling, hard_drop=hard_drop, soft_drop=soft_drop)
         next_state = self.state.get_board(scale=True)
+        # next_state = self.state._get_feature_set()
         self.steps += 1
         if self.max_steps is not None and self.steps >= self.max_steps:
             game_over = True
@@ -615,6 +613,7 @@ class TetrisEnv(gym.Env):
             print("Curr piece:", self.state.curr, ", next piece:", self.state.next)
             print("Game over:", self.state.game_over)
             print(self.state.mini_board)
+            self.state._get_feature_set()
 
     def close_render(self):
         if self.viewer is not None and self.viewer.isopen:
@@ -627,13 +626,17 @@ class TetrisEnv(gym.Env):
             print("Warming up...")
         while (time.perf_counter()-t < warmup):
             action = random.choice(env._action_set)
-            _ = env.step(action)
+            _, _, game_over, _ = env.step(action)
+            if game_over:
+                env.reset()
         if verbose:
             print("Measuring time...")
         t = time.perf_counter()
         for _ in range(steps):
             action = random.choice(env._action_set)
-            _ = env.step(action)
+            _, _, game_over, _ = env.step(action)
+            if game_over:
+                env.reset()
         step_per_sec = steps/(time.perf_counter()-t)
         self.reset()
         if verbose:
@@ -653,10 +656,8 @@ class InteractionTetris(TetrisEnv):
         return super().step(action)
 
 if __name__ == '__main__':
-    env = TetrisEnv(action_type='grouped', board_size=(20,10))
-    print(env.observation_space.shape)
-    env.reset()
-    # env.measure_step_time(verbose=True)
+    env = TetrisEnv(action_type='standard', board_size=(20,10))
+    env.measure_step_time(verbose=True)
     env.render(mode='image', wait_sec=0.1, verbose=True)
     for _ in range(100):
         action = random.choice(env._action_set)
