@@ -430,7 +430,7 @@ class GameState:
         while y+self.curr.y+self.curr.y_dim < self.Y_BOARD and not self._check_collision(self.curr.x, y+self.curr.y+1):
             y += 1
         game_over = self._land_tetris(self.curr.x, y+self.curr.y)
-        return y, game_over
+        return y, game_over, (self.curr.x, self.curr.y+y)
 
     # starting from top, shift piece once and then apply gravity
     def step_soft_drop(self, gravity=1):
@@ -444,14 +444,17 @@ class GameState:
             # try to land block as its clearly not able to fall the maximum height
             if self.landed_before:
                 game_over = self._land_tetris(self.curr.x, self.curr.y)
+                placed_block = (self.curr.x, self.curr.y)
             else:
                 self.landed_before = True
+                placed_block = None
                 game_over = False
             self._draw_ghost_piece()
-            return adj, game_over
+            return adj, game_over, placed_block
         else:
             self._draw_ghost_piece()
-            return adj, False
+            placed_block = False
+            return adj, False, None
 
     def remove_completed_lines(self):
         completedLines = np.all(self.mini_board, axis=1)
@@ -543,10 +546,10 @@ class TetrisEnv(gym.Env):
         self.state.reset()
         self.steps = 0
         state = self.state.get_board(scale=True)
-        # state = self.state._get_feature_set()
         return state
 
     def step(self, action):
+        info = {}
         soft_drop = False
         hard_drop = False
         if self.action_type == 'grouped':
@@ -555,44 +558,47 @@ class TetrisEnv(gym.Env):
             shifted_down = 0
             if not game_over:
                 self.state.set_piece_rotation(rotation)
-                shifted_down, game_over = self.state.step_hard_drop()
+                shifted_down, game_over, landed_tetris = self.state.step_hard_drop()
             hard_drop = True
         elif self.action_type == 'semigrouped':
             if action < self.state.X_BOARD:
                 self.state.set_piece_x(action)
-                shifted_down, game_over = self.state.step_hard_drop()
+                shifted_down, game_over, landed_tetris = self.state.step_hard_drop()
                 hard_drop = True
             else:
                 rotate = 'L' if action == self.state.X_BOARD else 'R'
                 self.state.step_rotate_piece(rotate)
-                shifted_down, game_over = self.state.step_soft_drop()
+                shifted_down, game_over, landed_tetris = self.state.step_soft_drop()
         elif self.action_type == 'standard':
             # actions = {0:'rotate_left', 1: 'rotate_right', 2: 'hard_drop', 3: 'soft_drop', 4:'move_left', 5: 'move_right'}
             if action < 2:
                 rotate = 'L' if action == 0 else 'R'
                 self.state.step_rotate_piece(rotate)
-                shifted_down, game_over = self.state.step_soft_drop()
+                shifted_down, game_over, landed_tetris = self.state.step_soft_drop()
             elif action == 2:
-                shifted_down, game_over = self.state.step_hard_drop()
+                shifted_down, game_over, landed_tetris = self.state.step_hard_drop()
                 hard_drop = True
             elif action == 3:
-                shifted_down, game_over = self.state.step_soft_drop(gravity=2)
+                shifted_down, game_over, landed_tetris = self.state.step_soft_drop(gravity=2)
                 soft_drop = True
             else:
                 x_adj = 'L' if action == 4 else 'R'
                 self.state.step_move_piece_x(x_adj)
-                shifted_down, game_over = self.state.step_soft_drop()
+                shifted_down, game_over, landed_tetris = self.state.step_soft_drop()
         elif self.action_type == 'simplified':
             self.state.set_piece_x(action)
-            shifted_down, game_over = self.state.step_hard_drop()
+            shifted_down, game_over, landed_tetris = self.state.step_hard_drop()
         cleared = self.state.remove_completed_lines()
+        info['lines cleared'] = cleared
+        info['block placed'] = landed_tetris
+        info['level'] = self.state.level
+        info['combo'] = self.state.combo
         reward = self.state.update_score(shifted_down, cleared, reward_type=self.reward_type, reward_scaling=self.reward_scaling, hard_drop=hard_drop, soft_drop=soft_drop)
         next_state = self.state.get_board(scale=True)
-        # next_state = self.state._get_feature_set()
         self.steps += 1
         if self.max_steps is not None and self.steps >= self.max_steps:
             game_over = True
-        return next_state, reward, game_over, {}
+        return next_state, reward, game_over, info
 
     def render(self, mode='image', wait_sec=0, verbose=False):
         image = self.state.get_board()
@@ -613,7 +619,6 @@ class TetrisEnv(gym.Env):
             print("Curr piece:", self.state.curr, ", next piece:", self.state.next)
             print("Game over:", self.state.game_over)
             print(self.state.mini_board)
-            self.state._get_feature_set()
 
     def close_render(self):
         if self.viewer is not None and self.viewer.isopen:

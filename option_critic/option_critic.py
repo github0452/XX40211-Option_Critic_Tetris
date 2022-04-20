@@ -266,7 +266,7 @@ class OptionCritic():
             }, path)
 
     def load(self, path):
-        checkpoint = torch.load(path)
+        checkpoint = torch.load(path,map_location='cuda:0')
         self.option_critic.load_state_dict(checkpoint['model_option_critic'])
         self.seed = self.set_seed(checkpoint['seed'])
         self.optim.load_state_dict(checkpoint['optim'])
