@@ -25,12 +25,12 @@ class OptionCriticConv(nn.Module):
         self.in_channels = observation_space[0]
         self.num_actions = num_actions
         self.num_options = num_options
-        if observation_space[1] == 10 and observation_space[2] == 10:
+        if observation_space[1] == 310 and observation_space[2] == 295:
             self.magic_number = 73920
-        elif observation_space[1] == 20 and observation_space[2] == 10:
-            self.magic_number = 99264
+        # elif observation_space[1] == 20 and observation_space[2] == 10:
+        #     self.magic_number = 99264
         else:
-            raise ValueError('Unconfigured board size for conv net.')
+            raise ValueError(f'Unconfigured board size for conv net. y: {observation_space[1]}, x: {observation_space[2]}')
         self.device = device
 
         self.cnn_feature = nn.Sequential(
@@ -266,7 +266,7 @@ class OptionCritic():
             }, path)
 
     def load(self, path):
-        checkpoint = torch.load(path)
+        checkpoint = torch.load(path,map_location='cuda:0')
         self.option_critic.load_state_dict(checkpoint['model_option_critic'])
         self.seed = self.set_seed(checkpoint['seed'])
         self.optim.load_state_dict(checkpoint['optim'])
