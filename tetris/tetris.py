@@ -8,31 +8,34 @@ import torch
 
 class TETRIMINO(object):
     templates = []
-    adjs = []
     centers = []
     type = ""
 
     def __init__(self, x, y=0, rotation=0):
-        self.y = y + self.adjs[rotation][0]
-        self.x = x + self.adjs[rotation][1]
+        self.y = y
+        self.x = x
         self.rotation = rotation
         self.update_parameters()
+
+    def get_x(self):
+        return self.x - self.x_cnt
+
+    def get_y(self):
+        return self.y - self.y_cnt
+
+    def get_adj(self):
+        return 2 - self.y_cnt, 2 - self.x_cnt
 
 
     def update_parameters(self):
         self.template = self.templates[self.rotation]
         self.y_dim, self.x_dim = self.template.shape
-        self.y_adj, self.x_adj = self.adjs[self.rotation]
         self.y_cnt, self.x_cnt = self.centers[self.rotation]
 
     def set_rotation(self, rotation):
         prev_ro = self.rotation
         self.rotation = rotation % len(self.templates)
         self.update_parameters()
-        self.y -= self.adjs[prev_ro][0]
-        self.x -= self.adjs[prev_ro][1]
-        self.y += self.adjs[self.rotation][0]
-        self.x += self.adjs[self.rotation][1]
 
     def rotate(self, direction='L'):
         if direction == 'L':
@@ -45,14 +48,12 @@ class TETRIMINO(object):
 class O_TETRIMINO(TETRIMINO):
     template = np.ones((2, 2), dtype=np.int8).astype(bool)
     templates = [template]
-    adjs = [(1,1)]
     centers = [(1,1)]
     type = "O"
 
 class I_TETRIMINO(TETRIMINO):
     template = np.ones((1, 4), dtype=np.int8).astype(bool)
     templates = [template, np.rot90(template)]
-    adjs = [(2,0),(0,2)]
     centers = [(0,2),(2,0)]
     type = "I"
 
@@ -61,7 +62,6 @@ class S_TETRIMINO(TETRIMINO):
     template[0, :2] = 1
     template[1, 1:] = 1
     templates = [template, np.rot90(template)]
-    adjs = [(1,1),(1,2)]
     centers = [(1,1),(1,0)]
     type = "S"
 
@@ -70,7 +70,6 @@ class Z_TETRIMINO(TETRIMINO):
     template[0, 1:] = 1
     template[1, :2] = 1
     templates = [template, np.rot90(template)]
-    adjs = [(1,1),(1,2)]
     centers = [(1,1),(1,0)]
     type = "Z"
 
@@ -84,7 +83,6 @@ class L_TETRIMINO(TETRIMINO):
         np.rot90(template, -2),
         np.rot90(template, 1)
     ]
-    adjs = [(1,1),(1,2),(2,1),(1,2)]
     centers = [(1,1),(1,0),(0,1),(1,1)]
     type = "L"
 
@@ -98,7 +96,6 @@ class J_TETRIMINO(TETRIMINO):
         np.rot90(template, -2),
         np.rot90(template, 1)
     ]
-    adjs = [(1,1),(1,2),(2,1),(1,1)]
     centers = [(1,1),(1,0),(0,1),(1,1)]
     type = "J"
 
@@ -112,27 +109,28 @@ class T_TETRIMINO(TETRIMINO):
         np.rot90(template, -2),
         np.rot90(template, 1)
     ]
-    adjs = [(1,1),(1,2),(2,1),(1,1)]
     centers = [(1,1),(1,0),(0,1),(1,1)]
     type = "T"
 
 class TETRIMINO_BAG:
-    def __init__(self, squares_only=False, spawn_x=3):
+    def __init__(self, squares_only=False, spawn_x=3, spawn_y=0, spawn_rotation=0):
         self.squares_only = squares_only
         self.spawn_x = spawn_x
+        self.spawn_y = spawn_y
+        self.spawn_rotation = spawn_rotation
         self.refill_bag()
 
     def refill_bag(self):
         if self.squares_only:
-            self.bag = [O_TETRIMINO(self.spawn_x)]
+            self.bag = [O_TETRIMINO]
         else:
-            self.bag = [O_TETRIMINO(self.spawn_x), I_TETRIMINO(self.spawn_x), S_TETRIMINO(self.spawn_x), Z_TETRIMINO(self.spawn_x), L_TETRIMINO(self.spawn_x), J_TETRIMINO(self.spawn_x), T_TETRIMINO(self.spawn_x)]
+            self.bag = [O_TETRIMINO, I_TETRIMINO, S_TETRIMINO, Z_TETRIMINO, L_TETRIMINO, J_TETRIMINO, T_TETRIMINO]
 
     def get_piece(self):
         # return I_TETRIMINO(self.spawn_x)
         if len(self.bag) < 1:
             self.refill_bag()
-        return self.bag.pop(random.randint(0, len(self.bag) - 1))
+        return self.bag.pop(random.randint(0, len(self.bag) - 1))(self.spawn_x, self.spawn_y, self.spawn_rotation)
 
 #               R    G    B
 WHITE       = (255, 255, 255)
@@ -198,9 +196,8 @@ class DrawBoard:
 
     def draw_landed_piece(self, piece, x_adj, y_adj):
         pixelx, pixely = x_adj*self.BOX_SIZE+self.EDGE_SIZE, y_adj*self.BOX_SIZE+self.EDGE_SIZE
-        slice =  np.s_[pixely:pixely+piece.y_dim*self.BOX_SIZE,pixelx:pixelx+piece.x_dim*self.BOX_SIZE]
-        squares = piece.template
-        self.draw_boxes(squares, slice, self.PLACED_PIECE_COLOR)
+        slice =  np.s_[pixely:pixely+piece.shape[0]*self.BOX_SIZE,pixelx:pixelx+piece.shape[1]*self.BOX_SIZE]
+        self.draw_boxes(piece, slice, self.PLACED_PIECE_COLOR)
         self.PREV_GHOST_SLICE = None
 
     def clear_rows(self, rows):
@@ -260,7 +257,7 @@ class GameState:
         self.SOFT_DROP_SCORE = 1
         self.HARD_DROP_SCORE = 2
         self.RENDER = DrawBoard(board_size)
-        self.bag = TETRIMINO_BAG(squares_only=squares_only, spawn_x=int((self.X_BOARD-4)/2))
+        self.bag = TETRIMINO_BAG(squares_only=squares_only, spawn_x=int(self.X_BOARD/2), spawn_y=2, spawn_rotation=0)
         self.reset()
 
     def reset(self):
@@ -269,9 +266,6 @@ class GameState:
         self.curr = None; self.next = None; self.hold = None
         self.bag.refill_bag()
         self._cycle_pieces()
-        self.landed_before = False
-        self.can_hold_piece = True
-        self.last_move_rotation = False
 
         # stats
         self.score = 0
@@ -279,12 +273,14 @@ class GameState:
         self.combo = -1
         self.level = self.calc_level()
         self.game_over = False
-        self.lock_delay = True
+        self.can_hold_piece = True
 
         # rendering stuff
-        self.RENDER.reset()
-        self.RENDER.draw_curr_box(self.curr.template, self.curr.y_adj, self.curr.x_adj)
-        self.RENDER.draw_next_box(self.next.template, self.next.y_adj, self.next.x_adj)
+        self.RENDER.reset() # 2 0,    cnt 0,2         # 1,1    cnt 1,1
+        y,x = self.curr.get_adj()
+        self.RENDER.draw_curr_box(self.curr.template, y, x)
+        y,x = self.next.get_adj()
+        self.RENDER.draw_next_box(self.next.template, y, x)
         self._draw_ghost_piece()
 
     # this function should be called after a piece is placed to cycle the next piece
@@ -297,27 +293,38 @@ class GameState:
         collisions = np.logical_and(self.curr.template, self.mini_board[y:y+self.curr.y_dim,x:x+self.curr.x_dim])
         return collisions.any().item()
 
+    def _check_in_bounds(self, x, y):
+        within_x = 0 <= x <= self.X_BOARD-self.curr.x_dim
+        within_y = 0 <= y <= self.Y_BOARD-self.curr.y_dim
+        return within_x and within_y
+
     def _draw_ghost_piece(self):
-        if self.curr.y < 2:
-            self.RENDER.draw_ghost_piece(self.curr.template[2-self.curr.y:], self.curr.x, 0)
+        print("test", self.curr.get_y(), self.curr.y)
+        if self.curr.get_y() < 2:
+            print("branch 1")
+            self.RENDER.draw_ghost_piece(self.curr.template[2-self.curr.get_y():], self.curr.get_x(), 0)
         else:
-            self.RENDER.draw_ghost_piece(self.curr.template, self.curr.x, self.curr.y-2)
+            print("branch 2")
+            self.RENDER.draw_ghost_piece(self.curr.template, self.curr.get_x(), self.curr.get_y()-2)
 
     # this function should be called when the current piece has landed - game over when a piece is placed in the vanish zone or a piece cannot spawn
-    def _land_tetris(self, x, y=0):
-        self.mini_board[y:self.curr.y_dim+y, x:self.curr.x_dim+x] |= self.curr.template # place piece using logical or
-        self.previous_landing_height = self.Y_BOARD - y # location of the top of the piece
+    def _land_tetris(self):
+        self.mini_board[self.curr.get_y():self.curr.get_y()+self.curr.y_dim, self.curr.get_x():self.curr.get_x()+self.curr.x_dim] |= self.curr.template # place piece using logical or
         self.RENDER.undraw_ghost_piece()
-        if y < 2:
+        if self.curr.get_y() < 2:
             placed_in_vanish = True
+            self.RENDER.draw_landed_piece(self.curr.template[2-self.curr.get_y():], self.curr.get_x(), 0)
         else:
             placed_in_vanish = False
-            self.RENDER.draw_landed_piece(self.curr, x, y-2)
+            self.RENDER.draw_landed_piece(self.curr.template, self.curr.get_x(), self.curr.get_y()-2)
         self._cycle_pieces()
-        self.RENDER.draw_curr_box(self.curr.template, self.curr.y_adj, self.curr.x_adj)
-        self.RENDER.draw_next_box(self.next.template, self.next.y_adj, self.next.x_adj)
+
+        y,x = self.curr.get_adj()
+        self.RENDER.draw_curr_box(self.curr.template, y, x)
+        y,x = self.next.get_adj()
+        self.RENDER.draw_next_box(self.next.template, y, x)
         self._draw_ghost_piece()
-        unable_to_spawn = self._check_collision(self.curr.x, self.curr.y)
+        unable_to_spawn = self._check_collision(self.curr.get_x(), self.curr.get_y())
         game_over = placed_in_vanish or unable_to_spawn
         self.can_hold_piece = True
         return game_over
@@ -349,9 +356,9 @@ class GameState:
                 self.hold = self.curr
                 self._cycle_pieces()
             self.hold.__init__(int((self.X_BOARD-4)/2)) # reset held piece
-            self.RENDER.draw_curr_box(self.curr.template, self.curr.y_adj, self.curr.x_adj)
-            self.RENDER.draw_next_box(self.next.template, self.next.y_adj, self.next.x_adj)
-            self.RENDER.draw_hold_box(self.hold.template, self.hold.y_adj, self.hold.x_adj)
+            self.RENDER.draw_curr_box(self.curr.template, self.curr.y_adj, self.curr.x_adj) # TODO
+            self.RENDER.draw_next_box(self.next.template, self.next.y_adj, self.next.x_adj) # TODO
+            self.RENDER.draw_hold_box(self.hold.template, self.hold.y_adj, self.hold.x_adj) # TODO
             # spawn new piece at top
             self._draw_ghost_piece()
             # check if its possible
@@ -361,65 +368,62 @@ class GameState:
                 placed_in_vanish = False
             unable_to_spawn = self._check_collision(self.curr.x, self.curr.y)
             game_over = placed_in_vanish or unable_to_spawn
+            self.game_over = game_over
             self.can_hold_piece = False
             return game_over
         return False
 
     def step_rotate_piece(self, direction):
-        self.RENDER.undraw_ghost_piece()
-        prev_rotation = self.curr.rotation
-        self.curr.rotate(direction)
-        curr_rotation = self.curr.rotation
-        success = True
-        # check if position is in, if it isnt in, then we need to wallkick
-        if not 0 <= self.curr.x <= self.X_BOARD-self.curr.x_dim or not 0 <= self.curr.y <= self.Y_BOARD-self.curr.y_dim or self._check_collision(self.curr.x, self.curr.y):
-            # O should never get here
-            if self.curr.type == "O":
+        if self.curr.type == "O":
+            if not self._check_in_bounds(self.curr.get_x(), self.curr.get_y()) or self._check_collision(self.curr.get_x(), self.curr.get_y()):
                 raise ValueError('O Tetrimino failed to rotate')
-            elif self.curr.type == "I":
-                SRS = {
-                    '0>>1': [(-2,0),(1,0),(-2,-1),(1,2)],
-                    '1>>0': [(2,0),(-1,0),(2,1),(-1,-2)],
-                    '1>>2': [(-1,0),(2,0),(-1,2),(2,-1)],
-                    '2>>1': [(1,0),(-2,0),(1,-2),(-2,1)],
-                    '2>>3': [(2,0),(-1,0),(2,1),(-1,-2)],
-                    '3>>2': [(-2,0),(1,0),(-2,-1),(1,2)],
-                    '3>>0': [(1,0),(-2,0),(1,-2),(-2,1)],
-                    '0>>3': [(-1,0),(2,0),(-1,2),(2,-1)]
-                }
-            else:
-                SRS = {
-                    '0>>1': [(-1,0),(-1,1),(0,-2),(-1,-2)],
-                    '1>>0': [(1,0),(1,-1),(0,2),(1,2)],
-                    '1>>2': [(1,0),(1,-1),(0,2),(1,2)],
-                    '2>>1': [(-1,0),(-1,1),(0,-2),(-1,-2)],
-                    '2>>3': [(1,0),(1,1),(0,-2),(1,-2)],
-                    '3>>2': [(-1,0),(-1,-1),(0,2),(-1,2)],
-                    '3>>0': [(-1,0),(-1,-1),(0,2),(-1,2)],
-                    '0>>3': [(1,0),(1,1),(0,-2),(1,-2)]
-                }
-            index = str(prev_rotation)+'>>'+str(curr_rotation)
-            troubleshoot = SRS[index]
-            success = False
-            for x,y in troubleshoot:
-                y = -y
-                if 0 <= self.curr.x+x < self.X_BOARD-self.curr.x_dim and 0 <= self.curr.y+y < self.Y_BOARD-self.curr.y_dim and not self._check_collision(self.curr.x+x, self.curr.y+y):
-                    self.curr.x += x
-                    self.curr.y += y
-                    success = True
-                    break
-            if not success: # fail the rotation
-                self.curr.rotate('R' if direction == 'L' else 'L')
-        # otherwise
-        self.RENDER.draw_curr_box(self.curr.template, self.curr.y_adj, self.curr.x_adj)
+            return True
+        elif self.curr.type == "I":
+            SRS = {
+                '0>>1': [(0,0),(-2,0),(1,0),(-2,-1),(1,2)],
+                '1>>0': [(0,0),(2,0),(-1,0),(2,1),(-1,-2)],
+                '1>>2': [(0,0),(-1,0),(2,0),(-1,2),(2,-1)],
+                '2>>1': [(0,0),(1,0),(-2,0),(1,-2),(-2,1)],
+                '2>>3': [(0,0),(2,0),(-1,0),(2,1),(-1,-2)],
+                '3>>2': [(0,0),(-2,0),(1,0),(-2,-1),(1,2)],
+                '3>>0': [(0,0),(1,0),(-2,0),(1,-2),(-2,1)],
+                '0>>3': [(0,0),(-1,0),(2,0),(-1,2),(2,-1)]
+            }
+        else:
+            SRS = {
+                '0>>1': [(0,0),(-1,0),(-1,1),(0,-2),(-1,-2)],
+                '1>>0': [(0,0),(1,0),(1,-1),(0,2),(1,2)],
+                '1>>2': [(0,0),(1,0),(1,-1),(0,2),(1,2)],
+                '2>>1': [(0,0),(-1,0),(-1,1),(0,-2),(-1,-2)],
+                '2>>3': [(0,0),(1,0),(1,1),(0,-2),(1,-2)],
+                '3>>2': [(0,0),(-1,0),(-1,-1),(0,2),(-1,2)],
+                '3>>0': [(0,0),(-1,0),(-1,-1),(0,2),(-1,2)],
+                '0>>3': [(0,0),(1,0),(1,1),(0,-2),(1,-2)]
+            }
+        self.RENDER.undraw_ghost_piece()
+        rotation_index = str(self.curr.rotation) + '>>'
+        self.curr.rotate(direction)
+        rotation_index += str(self.curr.rotation)
+        troubleshoot = SRS[rotation_index]
+        success = False
+        for x,y in troubleshoot:
+            y = -y
+            if self._check_in_bounds(self.curr.get_x()+x, self.curr.get_y()+y) and not self._check_collision(self.curr.get_x()+x, self.curr.get_y()+y):
+                self.curr.x += x; self.curr.y += y
+                success = True
+                break
+        if not success: # fail the rotation
+            self.curr.rotate('R' if direction == 'L' else 'L')
+        y,x = self.curr.get_adj()
+        self.RENDER.draw_curr_box(self.curr.template, y, x)
         self._draw_ghost_piece()
         return success
 
     def step_move_piece_x(self, direction='L'):
         adj = -1 if direction == 'L' else 1
-        if 0 <= self.curr.x+adj < self.X_BOARD-self.curr.x_dim and not self._check_collision(self.curr.x+adj, self.curr.y):
+        if self._check_in_bounds(self.curr.get_x()+adj, self.curr.get_y()) and not self._check_collision(self.curr.get_x()+adj, self.curr.get_y()):
             self.RENDER.undraw_ghost_piece()
-            self.curr.x = np.clip(self.curr.x+adj, 0, self.X_BOARD-self.curr.x_dim)
+            self.curr.x += adj
             self._draw_ghost_piece()
             return True
         return False
@@ -427,30 +431,25 @@ class GameState:
     # starting from top, keep shifting piece down and then place it
     def step_hard_drop(self):
         y = 0
-        while y+self.curr.y+self.curr.y_dim < self.Y_BOARD and not self._check_collision(self.curr.x, y+self.curr.y+1):
+        while self._check_in_bounds(self.curr.get_x(), self.curr.get_y()+y+1) and not self._check_collision(self.curr.get_x(), y+self.curr.get_y()+1):
             y += 1
-        game_over = self._land_tetris(self.curr.x, y+self.curr.y)
-        return y, game_over, (self.curr.x, self.curr.y+y)
+        self.curr.y += y
+        game_over = self._land_tetris()
+        return y, game_over, (self.curr.x, self.curr.y)
 
     # starting from top, shift piece once and then apply gravity
     def step_soft_drop(self, gravity=1):
         self.RENDER.undraw_ghost_piece()
         adj = 0
         # drop it as many blocks as possible towards the gravity
-        while adj < gravity and adj+self.curr.y+self.curr.y_dim < self.Y_BOARD and not self._check_collision(self.curr.x, adj+self.curr.y+1):
+        while adj < gravity and self._check_in_bounds(self.curr.get_x(), self.curr.get_y()+adj+1) and not self._check_collision(self.curr.get_x(), adj+self.curr.get_y()+1):
             adj += 1
         self.curr.y += adj
         if adj < gravity:
             # try to land block as its clearly not able to fall the maximum height
-            if self.landed_before:
-                game_over = self._land_tetris(self.curr.x, self.curr.y)
-                placed_block = (self.curr.x, self.curr.y)
-            else:
-                self.landed_before = True
-                placed_block = None
-                game_over = False
+            game_over = self._land_tetris()
             self._draw_ghost_piece()
-            return adj, game_over, placed_block
+            return adj, game_over, (self.curr.x, self.curr.y)
         else:
             self._draw_ghost_piece()
             placed_block = False
@@ -464,7 +463,9 @@ class GameState:
             self.mini_board = np.delete(self.mini_board, completedLines, axis=0)
             self.mini_board = np.insert(self.mini_board, 0, np.zeros((num_removed_lines,self.X_BOARD), dtype=bool), axis=0)
             # update rendered board
+            self.RENDER.undraw_ghost_piece()
             self.RENDER.clear_rows(completedLines[2:])
+            self._draw_ghost_piece()
         return num_removed_lines
 
     def calc_level(self): # calculate level based on the lines cleared
@@ -519,7 +520,7 @@ class TetrisEnv(gym.Env):
         self.state = GameState(board_size, squares_only=True) if action_type == 'simplified' else GameState(board_size, squares_only=False)
         if action_type == 'simplified':
             self._action_set = [a for a in range(self.state.X_BOARD)]
-        if action_type == 'grouped':
+        elif action_type == 'grouped':
             self._action_set = [a for a in range(self.state.X_BOARD * 4)]
         elif action_type == 'semigrouped':
             self._action_set = [a for a in range(self.state.X_BOARD+2)]
@@ -554,11 +555,9 @@ class TetrisEnv(gym.Env):
         hard_drop = False
         if self.action_type == 'grouped':
             x_index = int(action/4); rotation = action % 4
-            game_over = self.state.set_piece_x(x_index)
-            shifted_down = 0
-            if not game_over:
-                self.state.set_piece_rotation(rotation)
-                shifted_down, game_over, landed_tetris = self.state.step_hard_drop()
+            self.state.set_piece_rotation(rotation)
+            self.state.set_piece_x(x_index)
+            shifted_down, game_over, landed_tetris = self.state.step_hard_drop()
             hard_drop = True
         elif self.action_type == 'semigrouped':
             if action < self.state.X_BOARD:
@@ -652,17 +651,34 @@ class StackedFrameTetris():
     pass
 
 class InteractionTetris(TetrisEnv):
-    def __init__(self, board_size=(20,10), action_type='grouped', simplified=False):
-        super().__init__(board_size, action_type, simplified=simplified)
+    def __init__(self, board_size=(20,10), action_type='grouped'):
+        super().__init__(board_size, action_type)
 
     def step(self, action):
-        action = input('Type in action,'+str(self._action_set))
-        action = int(action)
+        if self.action_type == 'grouped':
+            string = f'Type in index [0-{self.state.X_BOARD-1}] and rotation [0-4] in format \"index,rotation\":'
+            action = input(string).split(',')
+            action = int(action[0]) * 4 + int(action[1])
+        elif self.action_type == 'semigrouped':
+            string = f'Type in index [0-{self.state.X_BOARD-1}] or rotation [L,R]:'
+            action = input(string)
+            if action.isnumeric():
+                action = int(action)
+            elif action == 'L':
+                action = self.state.X_BOARD
+            else:
+                action = self.state.X_BOARD+1
+        elif self.action_type == 'standard':
+            string = f'Type in action [0: rotate left, 1: rotate right, 2: hard drop, 3: soft drop, 4: move left, 5: move right]:'
+            #{0:'rotate_left', 1: 'rotate_right', 2: 'hard_drop', 3: 'soft_drop', 4:'move_left', 5: 'move_right'}
+            action = int(input(string))
+        else:
+            action = int(input('Type in action (index) '+ str(self._action_set)))
         return super().step(action)
 
 if __name__ == '__main__':
-    env = TetrisEnv(action_type='standard', board_size=(20,10))
-    env.measure_step_time(verbose=True)
+    env = InteractionTetris(action_type='standard', board_size=(20,10))
+    # env.measure_step_time(verbose=True)
     env.render(mode='image', wait_sec=0.1, verbose=True)
     for _ in range(100):
         action = random.choice(env._action_set)
