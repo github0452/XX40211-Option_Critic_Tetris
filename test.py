@@ -67,21 +67,19 @@ parser.add_argument('--env-max-steps', default=18000, help='Maximum steps in env
 #
 parser.add_argument('--logdir', default='logs/test/', help='where should stuff be logged')
 parser.add_argument('--model', default='best_model', help='name of the checkpoint')
-parser.add_argument('--eval-num', type=int, default=1000, help='number of episodes to evaluate')
+parser.add_argument('--eval-num', type=int, default=100, help='number of episodes to evaluate')
 parser.add_argument('--model-type', default="PPO", help='what model to be using [PPO, DQN, Option]')
 parser.add_argument('--options', type=int, default=8, help='how many options')
 
 args = parser.parse_args()
 
 folder = args.logdir
-checkpoint = args.logdir + args.model
-board_size = (10,10)
+checkpoint = args.logdir + args.model_type + "/" + args.model
 board_size = tuple([int(i) for i in args.env_size.split(',')])
 env = TetrisEnv(board_size=board_size, action_type=args.env_action_type, reward_type=args.env_reward_type, max_steps=args.env_max_steps, reward_scaling=args.env_reward_scaling)
 
 # loading model
 # model = PPO.load(checkpoint,force_reset=False)
-print(args.model_type)
 if args.model_type == "PPO":
     model = create_PPO_Model(folder, "cuda:0")
     model.set_parameters(checkpoint)
@@ -91,9 +89,11 @@ elif args.model_type == "DQN":
 elif args.model_type == "Option":
     model = create_Option_Model(folder, "cuda:0", args.options)
     model.load(checkpoint)
+elif args.model_type == "random":
+    pass
 else:
     raise ValueError('Model type'+ args.model+ 'not recognized.')
-
+import random
 
 # average steps - how long the model survive
 # average reward - how much reward is the models obtaining
@@ -116,13 +116,25 @@ distribution_level = [0] * 10
 distribution_combo = [0] * 11
 distribution_dropped_x = [0] * env.state.X_BOARD
 distribution_dropped_y = [0] * env.state.Y_BOARD
+distribution_actions_taken_2 = {
+    "I": [0] * len(env._action_set),
+    "J": [0] * len(env._action_set),
+    "S": [0] * len(env._action_set),
+    "Z": [0] * len(env._action_set),
+    "L": [0] * len(env._action_set),
+    "O": [0] * len(env._action_set),
+    "T": [0] * len(env._action_set)
+}
 for _ in range(args.eval_num):
     game_over = False; obs = env.reset(); current_option = None
     while not game_over:
         if args.model_type == "Option":
             action, current_option = model.predict(obs, deterministic=False, current_option=current_option) # option critic version
+        elif args.model_type == "random":
+            action = random.choice(env._action_set)
         else:
             action, _ = model.predict(obs, deterministic=False)
+        piece = env.state.curr.type
         obs, reward, game_over, info = env.step(action)
         average_steps += 1
         average_reward += reward
@@ -130,6 +142,7 @@ for _ in range(args.eval_num):
         average_blocks_placed = average_blocks_placed + 1 if info['block placed'] is not None else average_blocks_placed
         distribution_lines_cleared[info['lines cleared']] += 1
         distribution_actions_taken[action] += 1
+        distribution_actions_taken_2[piece][action] += 1
         distribution_level[info['level']] += 1
         if info['combo'] == -1:
             distribution_combo[0] += 1
@@ -150,6 +163,8 @@ print("Level distribution", ",".join([str(x) for x in distribution_level]))
 print("Combo distribution", ",".join([str(x) for x in distribution_combo]))
 print("Blocks dropped at x distribution", ",".join([str(x) for x in distribution_dropped_x]))
 print("Blocks dropped at y distribution", ",".join([str(x) for x in distribution_dropped_y]))
+for piece in distribution_actions_taken_2.keys():
+    print("Piece ", piece, ":", ",".join([str(x) for x in distribution_actions_taken_2[piece]]))
 
 
 # game_over      = False
