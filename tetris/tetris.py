@@ -299,12 +299,9 @@ class GameState:
         return within_x and within_y
 
     def _draw_ghost_piece(self):
-        print("test", self.curr.get_y(), self.curr.y)
         if self.curr.get_y() < 2:
-            print("branch 1")
             self.RENDER.draw_ghost_piece(self.curr.template[2-self.curr.get_y():], self.curr.get_x(), 0)
         else:
-            print("branch 2")
             self.RENDER.draw_ghost_piece(self.curr.template, self.curr.get_x(), self.curr.get_y()-2)
 
     # this function should be called when the current piece has landed - game over when a piece is placed in the vanish zone or a piece cannot spawn
@@ -317,6 +314,7 @@ class GameState:
         else:
             placed_in_vanish = False
             self.RENDER.draw_landed_piece(self.curr.template, self.curr.get_x(), self.curr.get_y()-2)
+        placed_x, placed_y = self.curr.x, self.curr.y
         self._cycle_pieces()
 
         y,x = self.curr.get_adj()
@@ -327,7 +325,7 @@ class GameState:
         unable_to_spawn = self._check_collision(self.curr.get_x(), self.curr.get_y())
         game_over = placed_in_vanish or unable_to_spawn
         self.can_hold_piece = True
-        return game_over
+        return game_over, (placed_x, placed_y)
 
     # this function should be called during an action to set the rotation
     def set_piece_rotation(self, rotation):
@@ -434,8 +432,8 @@ class GameState:
         while self._check_in_bounds(self.curr.get_x(), self.curr.get_y()+y+1) and not self._check_collision(self.curr.get_x(), y+self.curr.get_y()+1):
             y += 1
         self.curr.y += y
-        game_over = self._land_tetris()
-        return y, game_over, (self.curr.x, self.curr.y)
+        game_over, piece_placed = self._land_tetris()
+        return y, game_over, piece_placed
 
     # starting from top, shift piece once and then apply gravity
     def step_soft_drop(self, gravity=1):
@@ -447,9 +445,9 @@ class GameState:
         self.curr.y += adj
         if adj < gravity:
             # try to land block as its clearly not able to fall the maximum height
-            game_over = self._land_tetris()
+            game_over, piece_placed = self._land_tetris()
             self._draw_ghost_piece()
-            return adj, game_over, (self.curr.x, self.curr.y)
+            return adj, game_over, piece_placed
         else:
             self._draw_ghost_piece()
             placed_block = False
@@ -677,7 +675,7 @@ class InteractionTetris(TetrisEnv):
         return super().step(action)
 
 if __name__ == '__main__':
-    env = InteractionTetris(action_type='standard', board_size=(20,10))
+    env = InteractionTetris(action_type='semigrouped', board_size=(20,10))
     # env.measure_step_time(verbose=True)
     env.render(mode='image', wait_sec=0.1, verbose=True)
     for _ in range(100):
