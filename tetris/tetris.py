@@ -125,7 +125,6 @@ class TETRIMINO_BAG:
             self.bag = [O_TETRIMINO]
         else:
             self.bag = [O_TETRIMINO, I_TETRIMINO, S_TETRIMINO, Z_TETRIMINO, L_TETRIMINO, J_TETRIMINO, T_TETRIMINO]
-
     def get_piece(self):
         # return I_TETRIMINO(self.spawn_x)
         if len(self.bag) < 1:
@@ -471,38 +470,33 @@ class GameState:
         return self.level
 
     def update_score(self, piece_fallen, cleared_lines, reward_type='standard', reward_scaling=None, hard_drop=False, soft_drop=False):
-        additional_score = 0
         level = self.level
         self.combo = self.combo + 1 if cleared_lines > 0 else -1
         self.RENDER.draw_level_slice(self.level)
         self.RENDER.draw_combo_slice(self.combo)
+        info = {'Lines':0, 'Combo':0, 'softdrop':0, 'harddrop':0}
         if reward_type == 'standard':
-            additional_score += self.LINE_MULTI[cleared_lines] * level  # updating score for cleared lines
+            info['Lines'] = self.LINE_MULTI[cleared_lines] * level
             if self.combo > -1:
-                additional_score += 50 * self.COMBO_MULTI[min(self.combo,self.MAX_COMBO)] * level # updating score for combos
+                info['Combo'] = 50 * self.COMBO_MULTI[min(self.combo,self.MAX_COMBO)] * level
             if soft_drop:
-                additional_score += piece_fallen * self.SOFT_DROP_SCORE # how much the piece has fallen
+                info['softdrop'] = piece_fallen * self.SOFT_DROP_SCORE
             if hard_drop:
-                additional_score += piece_fallen * self.HARD_DROP_SCORE
-            additional_score += cleared_lines
-        elif reward_type == 'no piece drop':
-            additional_score += self.LINE_MULTI[cleared_lines] * level  # updating score for cleared lines
+                info['harddrop'] = piece_fallen * self.HARD_DROP_SCORE
+        elif reward_type == 'no drop':
+            info['Lines'] = self.LINE_MULTI[cleared_lines] * level
             if self.combo > -1:
-                additional_score += 50 * self.COMBO_MULTI[min(self.combo,self.MAX_COMBO)] * level # updating score for combos
-            additional_score += cleared_lines
-        elif reward_type == 'only lines':
-            additional_score += self.LINE_MULTI[cleared_lines] * level  # updating score for cleared lines
-        elif reward_type == 'num lines':
-            additional_score += cleared_lines
+                info['Combo'] = 50 * self.COMBO_MULTI[min(self.combo,self.MAX_COMBO)] * level
         else:
             raise ValueError('Reward type not recognised.')
+        additional_score = sum(info.values())
         if reward_scaling is not None:
             if reward_scaling == 'multi':
                 additional_score *= 0.001
             elif reward_scaling == 'log':
                 additional_score = math.log10(additional_scale)
         self.score += additional_score
-        return float(additional_score)
+        return float(additional_score), info
 
     def get_board(self, scale=False):
         screen = self.RENDER.get_render()
@@ -590,7 +584,8 @@ class TetrisEnv(gym.Env):
         info['block placed'] = landed_tetris
         info['level'] = self.state.level
         info['combo'] = self.state.combo
-        reward = self.state.update_score(shifted_down, cleared, reward_type=self.reward_type, reward_scaling=self.reward_scaling, hard_drop=hard_drop, soft_drop=soft_drop)
+        reward, score_info = self.state.update_score(shifted_down, cleared, reward_type=self.reward_type, reward_scaling=self.reward_scaling, hard_drop=hard_drop, soft_drop=soft_drop)
+        info.update(score_info)
         next_state = self.state.get_board(scale=True)
         self.steps += 1
         if self.max_steps is not None and self.steps >= self.max_steps:
@@ -675,7 +670,7 @@ class InteractionTetris(TetrisEnv):
         return super().step(action)
 
 if __name__ == '__main__':
-    env = InteractionTetris(action_type='semigrouped', board_size=(20,10))
+    env = InteractionTetris(action_type='standard', board_size=(20,10))
     # env.measure_step_time(verbose=True)
     env.render(mode='image', wait_sec=0.1, verbose=True)
     for _ in range(100):
