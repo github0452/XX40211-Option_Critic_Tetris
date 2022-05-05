@@ -139,7 +139,7 @@ def get_stats(args, model, model_type, num_options):
                 dist_piece_per_option[current_option][piece_dict[piece]] += 1
                 dist_actions_per_option[current_option][action] += 1
                 if info['block placed'] is not None:
-                    piece_dist_options[current_option][info['block placed']] += 1
+                    piece_dist_options[current_option][info['block placed'][1], info['block placed'][0]] += 1
         when_blocks_filled[board_counter > 0] += curr_step - board_counter[board_counter > 0]
         num_blocks_filled += env.state.mini_board
         score_max = max(score_max, eps_reward)
@@ -227,15 +227,17 @@ for type,num_option,folder in iteration:
     # # create the checkpoint
     if args.model is None:
         if type == "Option":
-            checkpoint = folder + "_1000000_steps.zip"
+            checkpoint = "logs_gpu/grouped-standard-longrun/Option-2/" + "_4000000_steps.zip"
         else:
-            checkpoint = folder + "rl_model_1000000_steps"
+            # checkpoint = folder + "rl_model_1000000_steps"
+            checkpoint = "logs_gpu/grouped-standard-longrun/DQN-cont-1mil-step/" + "rl_model_1200000_steps"
     else:
         checkpoint = folder + args.model
     # load model and other stuff
     # if model zip is none, we use a harded model zip
-    model = load_model(type, checkpoint, num_option)
-    get_stats(args, model, type, num_option)
+    if type == "Option" and num_option == 2:
+        model = load_model(type, checkpoint, num_option)
+        get_stats(args, model, type, num_option)
 # game_over      = False
 # obs            = env.reset()
 # current_option = None
