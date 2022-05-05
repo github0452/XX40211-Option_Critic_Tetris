@@ -27,8 +27,8 @@ class OptionCriticConv(nn.Module):
         self.num_options = num_options
         if observation_space[1] == 310 and observation_space[2] == 295:
             self.magic_number = 73920
-        # elif observation_space[1] == 20 and observation_space[2] == 10:
-        #     self.magic_number = 99264
+        elif observation_space[1] == 410 and observation_space[2] == 295:
+            self.magic_number = 99264
         else:
             raise ValueError(f'Unconfigured board size for conv net. y: {observation_space[1]}, x: {observation_space[2]}')
         self.device = device
@@ -266,7 +266,7 @@ class OptionCritic():
             }, path)
 
     def load(self, path):
-        checkpoint = torch.load(path,map_location='cuda:0')
+        checkpoint = torch.load(path,map_location=self.device)
         self.option_critic.load_state_dict(checkpoint['model_option_critic'])
         self.seed = self.set_seed(checkpoint['seed'])
         self.optim.load_state_dict(checkpoint['optim'])
@@ -275,7 +275,7 @@ class OptionCritic():
     def checkpoint(self, checkpointCallback, steps):
         self.save(f"{checkpointCallback.checkpoint_prefix}_{steps}_steps.zip")
 
-    def learn(self, total_timesteps, log_interval=1, callback=[]):
+    def learn(self, total_timesteps, log_interval=1, callback=[], reset_num_timesteps=None):
         steps = 0;
         while steps < total_timesteps:
             rewards        = 0
