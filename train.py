@@ -17,7 +17,7 @@ def create_env(args, num_cpu=1):
     eval_env = DummyVecEnv([make_env(board_size, args) for i in range(num_cpu)])
     return env, eval_env
 
-def create_PPO_Model(logdir, device):
+def create_PPO_Model(logdir, device, load):
     lr = 1e-5 # HPO 4.579846751190279e-05
     gae_lambda = 0.95 # HPO 0.8954544738495033
     max_grad_norm = 0.5 # HPO 0.6600052035605939
@@ -29,25 +29,34 @@ def create_PPO_Model(logdir, device):
         batch_size=batch_size,
         learning_rate=lr, gae_lambda=gae_lambda, ent_coef=ent_coef, vf_coef=vf_coef, n_steps=n_steps
     )
+    if load is not None:
+        model.set_parameters(load)
     return model
 
-def create_DQN_Model(logdir, device):
+def create_DQN_Model(logdir, device, load, start_eps):
     lr = 0.00048530177474105597 #default was 1e-5
     tau = 0.6894955031710317
     train_freq = 9 # default was 4
     target_update_interval = 7863
     exploration_fraction = 0.8069896792007639
-    buffer_size = 100#hpo 38846
+    buffer_size = 38846
     # set hyperparameters
     batch_size = 512
     learning_starts = 2048
-    model = DQN("CnnPolicy", env , verbose=1, tensorboard_log=logdir, device=device,
-        batch_size=batch_size, learning_starts=learning_starts,
-        learning_rate=lr, tau=tau, train_freq=train_freq, target_update_interval=target_update_interval, exploration_fraction=exploration_fraction, buffer_size=buffer_size
-    )
+    if load is None:
+        model = DQN("CnnPolicy", env , verbose=1, tensorboard_log=logdir, device=device,
+            batch_size=batch_size, learning_starts=learning_starts,
+            learning_rate=lr, tau=tau, train_freq=train_freq, target_update_interval=target_update_interval, exploration_fraction=exploration_fraction, buffer_size=buffer_size
+        )
+    else:
+        model = DQN("CnnPolicy", env , verbose=1, tensorboard_log=logdir, device=device, exploration_initial_eps=start_eps,
+            batch_size=batch_size, learning_starts=learning_starts,
+            learning_rate=lr, tau=tau, train_freq=train_freq, target_update_interval=target_update_interval, exploration_fraction=exploration_fraction, buffer_size=buffer_size
+        )
+        model.set_parameters(load)
     return model
 
-def create_Option_Model(logdir, device, num_options):
+def create_Option_Model(logdir, device, num_options, load):
     lr = 5.2715943476112373e-05
     update_frequency = 12 # default was 4
     freeze_interval = 1356
@@ -55,14 +64,22 @@ def create_Option_Model(logdir, device, num_options):
     termination_reg = 0.01#1.307299921895168e-05
     buffer_size = 22549 # default 16000
     epsilon_decay = 71712.5903207788
+    # epsilon_decay = 1000000
     # set hyperparameters
     batch_size = 512
     learning_starts = 2048
     # model and callbacks
-    model = OptionCritic(env, logdir=logdir, device=device,
-        num_options=num_options, learning_starts=learning_starts,
-        lr=lr, update_frequency=update_frequency, freeze_interval=freeze_interval, entropy_reg=entropy_reg, termination_reg=termination_reg, buffer_size=buffer_size, epsilon_decay=epsilon_decay
-    )
+    if load is None:
+        model = OptionCritic(env, logdir=logdir, device=device,
+            num_options=num_options, learning_starts=learning_starts,
+            lr=lr, update_frequency=update_frequency, freeze_interval=freeze_interval, entropy_reg=entropy_reg, termination_reg=termination_reg, buffer_size=buffer_size, epsilon_decay=epsilon_decay
+        )
+    else:
+        model = OptionCritic(env, logdir=logdir, device=device, epsilon_start=0.15,
+            num_options=num_options, learning_starts=learning_starts,
+            lr=lr, update_frequency=update_frequency, freeze_interval=freeze_interval, entropy_reg=entropy_reg, termination_reg=termination_reg, buffer_size=buffer_size, epsilon_decay=epsilon_decay
+        )
+        model.load(load)
     return model
 
 parser = argparse.ArgumentParser(description="Option Critic PyTorch")
@@ -83,6 +100,8 @@ parser.add_argument('--training-num', type=int, default=1000000, help='how many 
 # model arguments
 parser.add_argument('--model-type', default="PPO", help='what model to be using [PPO, DQN, Option]')
 parser.add_argument('--options', type=int, default=8, help='how many options')
+parser.add_argument('--start-eps', type=float, default=1.0)
+parser.add_argument('--load', default=None, help='If there is a model you want to load from')
 
 args = parser.parse_args()
 model_folder = args.logdir + args.model_type + "/"
@@ -92,12 +111,18 @@ board_size = tuple([int(i) for i in args.env_size.split(',')])
 num_cpu = 1
 env, eval_env = create_env(args, num_cpu)
 
+print("test", args.load)
+
 if args.model_type == "PPO":
-    model = create_PPO_Model(model_folder, args.device)
+    model = create_PPO_Model(model_folder, args.device, args.load)
 elif args.model_type == "DQN":
-    model = create_DQN_Model(model_folder, args.device)
+    model = create_DQN_Model(model_folder, args.device, args.load, args.start_eps)
+    if args.load is not None:
+        model.set_parameters(args.load)
 elif args.model_type == "Option":
-    model = create_Option_Model(model_folder, args.device, args.options)
+    model = create_Option_Model(model_folder, args.device, args.options, args.load)
+    if args.load is not None:
+        model.load(args.load)
 else:
     raise ValueError('Model type not recognized.')
 
