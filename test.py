@@ -1,5 +1,5 @@
 import gym
-
+import random
 import argparse
 from stable_baselines3 import PPO, DQN
 from stable_baselines3.common.env_checker import check_env
@@ -8,6 +8,9 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from tetris.tetris import TetrisEnv
 from option_critic.option_critic import OptionCritic
+from tqdm import tqdm
+import numpy as np
+import os
 
 def create_PPO_Model(logdir, device):
     lr = 1e-5 # HPO 4.579846751190279e-05
@@ -29,7 +32,7 @@ def create_DQN_Model(logdir, device):
     train_freq = 9 # default was 4
     target_update_interval = 7863
     exploration_fraction = 0.8069896792007639
-    buffer_size = 100#hpo 38846
+    buffer_size = 100 #38846 - reduced for testing as it wasn't important
     # set hyperparameters
     batch_size = 512
     learning_starts = 2048
@@ -43,19 +46,147 @@ def create_Option_Model(logdir, device, num_options):
     lr = 5.2715943476112373e-05
     update_frequency = 12 # default was 4
     freeze_interval = 1356
-    entropy_reg = 0.01#1.5374056773600333e-05
-    termination_reg = 0.01#1.307299921895168e-05
     buffer_size = 22549 # default 16000
     epsilon_decay = 71712.5903207788
     # set hyperparameters
     batch_size = 512
     learning_starts = 2048
+    entropy_reg = 0.01
+    termination_reg = 0.01
     # model and callbacks
     model = OptionCritic(env, logdir=logdir, device=device,
         num_options=num_options, learning_starts=learning_starts,
         lr=lr, update_frequency=update_frequency, freeze_interval=freeze_interval, entropy_reg=entropy_reg, termination_reg=termination_reg, buffer_size=buffer_size, epsilon_decay=epsilon_decay
     )
     return model
+
+# loading model
+def load_model(model_type, checkpoint, num_options=8):
+    # model = PPO.load(checkpoint,force_reset=False)
+    if model_type == "PPO":
+        model = create_PPO_Model(folder, "cuda:0")
+        model.set_parameters(checkpoint)
+    elif model_type == "DQN":
+        model = create_DQN_Model(folder, "cuda:0")
+        model.set_parameters(checkpoint)
+    elif model_type == "Option":
+        model = create_Option_Model(folder, "cuda:0", num_options)
+        model.load(checkpoint)
+    elif model_type == "random":
+        model = None
+    else:
+        raise ValueError('Model type'+ model_type+ 'not recognized.')
+    return model
+
+# from https://stackoverflow.com/questions/10461531/merge-and-sum-of-two-dictionaries
+def reducer(accumulator, element):
+    for key, value in element.items():
+        accumulator[key] = accumulator.get(key, 0) + value
+    return accumulator
+
+from collections import defaultdict
+
+def get_stats(args, model, model_type, num_options):
+    lines_cleared = np.zeros((5)); pieces_placed = 0
+    piece_dict = {"I":0, "J":1, "S":2, "Z":3, "L":4, "O":5, "T":6}
+    action_dist_per_piece = np.zeros((7, len(env._action_set)))
+    num_blocks_filled = np.zeros((env.state.Y_BOARD, env.state.X_BOARD))
+    when_blocks_filled = np.zeros((env.state.Y_BOARD, env.state.X_BOARD))
+    piece_dist_options = np.zeros((num_options, env.state.Y_BOARD, env.state.X_BOARD))
+    score_types = ['Lines', 'combo', 'softdrop', 'harddrop']
+    score_breakdown = np.zeros((4))
+    score_max = 0; score_min = 100000
+    if model_type == "Option":
+        option_lengths = {opt:[] for opt in range(num_options)}
+        curr_op_len = 0
+        dist_piece_per_option = np.zeros((num_options, 7))
+        dist_actions_per_option = np.zeros((num_options, len(env._action_set)))
+        dist_blocks_filled_per_option = np.zeros((num_options, env.state.Y_BOARD, env.state.X_BOARD))
+    for i in tqdm(range(args.eval_num)):
+        game_over = False; obs = env.reset(); current_option = None; curr_step = 0; eps_reward = 0
+        board_counter = np.zeros((env.state.Y_BOARD, env.state.X_BOARD))
+        board_counter_options = np.zeros((num_options, env.state.Y_BOARD, env.state.X_BOARD))
+        while not game_over:
+            # getting info about the state
+            piece = env.state.curr.type
+            # selecting action
+            if model_type == "Option":
+                prev_option = current_option
+                action, current_option = model.predict(obs, deterministic=False, current_option=current_option) # option critic version
+            elif model_type == "random":
+                action = random.choice(env._action_set)
+            else:
+                action, _ = model.predict(obs, deterministic=False)
+            # taking action
+            obs, reward, game_over, info = env.step(action)
+            # update stats
+            eps_reward += reward
+            for i in range(len(score_types)):
+                score_breakdown[i] += info[score_types[i]]
+            lines_cleared[info['lines cleared']] += 1
+            action_dist_per_piece[piece_dict[piece]][action] += 1
+            board_counter += env.state.mini_board
+            pieces_placed += 1 if info['block placed'] is not None else 0
+            curr_step += 1
+            if model_type == "Option":
+                if prev_option is None:
+                    pass
+                elif prev_option == current_option: # as in the option does not terminate
+                    curr_op_len += 1
+                else:
+                    option_lengths[prev_option].append(curr_op_len)
+                    curr_op_len = 1
+                dist_piece_per_option[current_option][piece_dict[piece]] += 1
+                dist_actions_per_option[current_option][action] += 1
+                if info['block placed'] is not None:
+                    piece_dist_options[current_option][info['block placed']] += 1
+        when_blocks_filled[board_counter > 0] += curr_step - board_counter[board_counter > 0]
+        num_blocks_filled += env.state.mini_board
+        score_max = max(score_max, eps_reward)
+        score_min = min(score_min, eps_reward)
+    when_blocks_filled[num_blocks_filled > 0] = np.divide(when_blocks_filled[num_blocks_filled > 0], num_blocks_filled[num_blocks_filled>0])
+    when_blocks_filled[num_blocks_filled == 0] = -1
+    # episode stats
+    print("Averaged per episode")
+    average_actions = np.sum(action_dist_per_piece)/args.eval_num
+    average_rewards = np.sum(score_breakdown)/args.eval_num
+    average_lines = sum(lines_cleared[1:])/args.eval_num
+    block_placed_perc = pieces_placed/np.sum(action_dist_per_piece)
+    score_lines, score_combo, score_softdrop, score_harddrop = tuple(score_breakdown)
+    action_0lines,action_1lines,action_2lines,action_3lines,action_4lines  = tuple(lines_cleared.tolist())
+    # general game stats
+    print("Actions,Rewards,Max_reward,Min_reward,Lines_cleared,Blocked_placed_%,\
+                score_lines,score_combo,score_softdrop,score_harddrop,\
+                action_0lines,action_1lines,action_2lines,action_3lines,action_4lines")
+    print(f"{average_actions},{average_rewards},{score_max},{score_min},{average_lines},{block_placed_perc},\
+            {score_lines},{score_combo},{score_softdrop},{score_harddrop},\
+            {action_0lines},{action_1lines},{action_2lines},{action_3lines},{action_4lines}")
+    print(f"Actions,{','.join([str(x) for x in range(40)])}")
+    print(f"Number,{','.join(np.sum(action_dist_per_piece, axis=0).astype(str).tolist())}")
+    print("Tetris board: how frequently is a block filled")
+    for row in num_blocks_filled/args.eval_num:
+        print(','.join(row.astype(str).tolist()))
+    print("Tetris board: when is a block filled on average")
+    for row in when_blocks_filled:
+        print(','.join(row.astype(str).tolist()))
+    # piece stats
+    for piece, i in piece_dict.items():
+        print(f"{piece},{','.join(action_dist_per_piece[i].astype(str).tolist())}")
+    # option stats
+    if model_type == "Option":
+        option_lengths = [option_lengths[x] for x in range(num_options)]
+        average_option_active = [sum(x) for x in option_lengths]
+        average_option_length = [sum(x)/len(x) for x in option_lengths]
+        print(f"Option_active_distribution,{','.join([str(x) for x in average_option_active])}")
+        print(f"Average_option_lengths_distribution,{','.join([str(x) for x in average_option_length])}")
+        for i in range(num_options):
+            print(dist_piece_per_option[i])
+            print(f"Piece_distribution for option {i}: {dist_piece_per_option[i].tolist()}")
+            print(f"Actions_taken_distribution for option {i}: {dist_actions_per_option[i].tolist()}")
+            print(f"Block filled distribution for option {i}:")
+            for row in dist_blocks_filled_per_option[i]:
+                print(row)
+            print("end")
 
 parser = argparse.ArgumentParser(description="Option Critic PyTorch")
 # environment arguments
@@ -66,117 +197,55 @@ parser.add_argument('--env-reward-scaling', default=None, help='Should the rewar
 parser.add_argument('--env-max-steps', default=18000, help='Maximum steps in environment (to prevent infinite runs)')
 #
 parser.add_argument('--logdir', default='logs/test/', help='where should stuff be logged')
-parser.add_argument('--model', default='best_model', help='name of the checkpoint')
+parser.add_argument('--model', default=None, help='name of the checkpoint')
 parser.add_argument('--eval-num', type=int, default=100, help='number of episodes to evaluate')
-parser.add_argument('--model-type', default="PPO", help='what model to be using [PPO, DQN, Option]')
+parser.add_argument('--model-type', default=None, help='what model to be using [PPO, DQN, Option]')
 parser.add_argument('--options', type=int, default=8, help='how many options')
 
 args = parser.parse_args()
-
-folder = args.logdir
-checkpoint = args.logdir + args.model_type + "/" + args.model
+# checkpoint = args.logdir + args.model
 board_size = tuple([int(i) for i in args.env_size.split(',')])
 env = TetrisEnv(board_size=board_size, action_type=args.env_action_type, reward_type=args.env_reward_type, max_steps=args.env_max_steps, reward_scaling=args.env_reward_scaling)
 
-# loading model
-# model = PPO.load(checkpoint,force_reset=False)
-if args.model_type == "PPO":
-    model = create_PPO_Model(folder, "cuda:0")
-    model.set_parameters(checkpoint)
-elif args.model_type == "DQN":
-    model = create_DQN_Model(folder, "cuda:0")
-    model.set_parameters(checkpoint)
-elif args.model_type == "Option":
-    model = create_Option_Model(folder, "cuda:0", args.options)
-    model.load(checkpoint)
-elif args.model_type == "random":
-    pass
+if args.model_type is not None:
+    iteration = [(args.model_type, args.option, args.logdir)]
 else:
-    raise ValueError('Model type'+ args.model+ 'not recognized.')
-import random
+    iteration = [('random', 1, args.logdir), ('PPO', 1, args.logdir+'PPO/'), ('DQN', 1, args.logdir+'DQN/'), ('Option', 2, args.logdir+'Option-2/'), ('Option', 4, args.logdir+'Option-4/'), ('Option', 8, args.logdir+'Option-8/')]
 
-# average steps - how long the model survive
-# average reward - how much reward is the models obtaining
-# average lines cleared - how many lines are the models clearing
-# average blocks placed
-# percentage of actions result in a block being placed
-# distribution of lines cleared
-# distribution of actions taken
-# distribution of index where the block is dropped
-# level distribution
-# combo distribution
-
-average_steps = 0
-average_reward = 0
-average_lines_cleared = 0
-average_blocks_placed = 0
-distribution_lines_cleared = [0] * 5 # only possible to clear between 0 and 4 lines
-distribution_actions_taken = [0] * len(env._action_set)
-distribution_level = [0] * 10
-distribution_combo = [0] * 11
-distribution_dropped_x = [0] * env.state.X_BOARD
-distribution_dropped_y = [0] * env.state.Y_BOARD
-distribution_actions_taken_2 = {
-    "I": [0] * len(env._action_set),
-    "J": [0] * len(env._action_set),
-    "S": [0] * len(env._action_set),
-    "Z": [0] * len(env._action_set),
-    "L": [0] * len(env._action_set),
-    "O": [0] * len(env._action_set),
-    "T": [0] * len(env._action_set)
-}
-for _ in range(args.eval_num):
-    game_over = False; obs = env.reset(); current_option = None
-    while not game_over:
-        if args.model_type == "Option":
-            action, current_option = model.predict(obs, deterministic=False, current_option=current_option) # option critic version
-        elif args.model_type == "random":
-            action = random.choice(env._action_set)
+for type,num_option,folder in iteration:
+    print("Model: ", type, '-', num_option)
+    # if we want to iterate through all checkpoints
+    # if type != 'random':
+    #     if type == 'Option':
+    #         files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f)) and 'steps.zip' in f]
+    #     else:
+    #         files = [f.replace('.zip','') for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f)) and 'steps.zip' in f]
+    #     for f in files:
+    #         print("Checkpoint: ", f.split('_')[-2])
+    #         model = load_model(type, folder+f, num_option)
+    #         get_stats(args, model, type, num_option)
+    # # create the checkpoint
+    if args.model is None:
+        if type == "Option":
+            checkpoint = folder + "_1000000_steps.zip"
         else:
-            action, _ = model.predict(obs, deterministic=False)
-        piece = env.state.curr.type
-        obs, reward, game_over, info = env.step(action)
-        average_steps += 1
-        average_reward += reward
-        average_lines_cleared += info['lines cleared']
-        average_blocks_placed = average_blocks_placed + 1 if info['block placed'] is not None else average_blocks_placed
-        distribution_lines_cleared[info['lines cleared']] += 1
-        distribution_actions_taken[action] += 1
-        distribution_actions_taken_2[piece][action] += 1
-        distribution_level[info['level']] += 1
-        if info['combo'] == -1:
-            distribution_combo[0] += 1
-        else:
-            distribution_combo[info['combo']+1] += 1
-        if info['block placed'] is not None:
-            distribution_dropped_x[info['block placed'][0]] += 1
-            distribution_dropped_y[info['block placed'][1]] += 1
-average_steps /= args.eval_num
-average_reward /= args.eval_num
-average_lines_cleared /= args.eval_num
-average_blocks_placed /= args.eval_num
-percentage_steps_where_blocks_placed = average_blocks_placed / average_steps
-print(f"Per episode, average steps: {average_steps}, average reward: {average_reward}, average lines cleared: {average_lines_cleared}, percentage steps where blocks placed: {percentage_steps_where_blocks_placed}")
-print("Lines cleared distribution", ",".join([str(x) for x in distribution_lines_cleared]))
-print("Actions taken distribution", ",".join([str(x) for x in distribution_actions_taken]))
-print("Level distribution", ",".join([str(x) for x in distribution_level]))
-print("Combo distribution", ",".join([str(x) for x in distribution_combo]))
-print("Blocks dropped at x distribution", ",".join([str(x) for x in distribution_dropped_x]))
-print("Blocks dropped at y distribution", ",".join([str(x) for x in distribution_dropped_y]))
-for piece in distribution_actions_taken_2.keys():
-    print("Piece ", piece, ":", ",".join([str(x) for x in distribution_actions_taken_2[piece]]))
-
-
+            checkpoint = folder + "rl_model_1000000_steps"
+    else:
+        checkpoint = folder + args.model
+    # load model and other stuff
+    # if model zip is none, we use a harded model zip
+    model = load_model(type, checkpoint, num_option)
+    get_stats(args, model, type, num_option)
 # game_over      = False
 # obs            = env.reset()
 # current_option = None
 # # env.measure_step_time(verbose=True)
 # env.render(wait_sec=1, mode='image', verbose=True)
 # while not game_over:
-#     action, _ = model.predict(obs, deterministic=False)
-#     print("Action", action)
-#     # action, current_option = model.predict(obs, deterministic=False, current_option=current_option) # option critic version
-#     # print(f"Action: {action}| option: {current_option}")
+#     # action, _ = model.predict(obs, deterministic=False)
+#     # print("Action", action)
+#     action, current_option = model.predict(obs, deterministic=False, current_option=current_option) # option critic version
+#     print(f"Action: {action}| option: {current_option}")
 #     obs, reward, game_over, info = env.step(action)
 #
 #     env.render(wait_sec=1, mode='image', verbose=True)
