@@ -93,7 +93,7 @@ def get_stats(args, model, model_type, num_options):
     num_blocks_filled = np.zeros((env.state.Y_BOARD, env.state.X_BOARD))
     when_blocks_filled = np.zeros((env.state.Y_BOARD, env.state.X_BOARD))
     piece_dist_options = np.zeros((num_options, env.state.Y_BOARD, env.state.X_BOARD))
-    score_types = ['Lines', 'combo', 'softdrop', 'harddrop']
+    score_types = ['Lines', 'Combo', 'softdrop', 'harddrop']
     score_breakdown = np.zeros((4))
     score_max = 0; score_min = 100000
     if model_type == "Option":
@@ -180,12 +180,11 @@ def get_stats(args, model, model_type, num_options):
         print(f"Option_active_distribution,{','.join([str(x) for x in average_option_active])}")
         print(f"Average_option_lengths_distribution,{','.join([str(x) for x in average_option_length])}")
         for i in range(num_options):
-            print(dist_piece_per_option[i])
             print(f"Piece_distribution for option {i}: {dist_piece_per_option[i].tolist()}")
             print(f"Actions_taken_distribution for option {i}: {dist_actions_per_option[i].tolist()}")
-            print(f"Block filled distribution for option {i}:")
-            for row in dist_blocks_filled_per_option[i]:
-                print(row)
+            # print(f"Block filled distribution for option {i}:")
+            # for row in dist_blocks_filled_per_option[i]:
+            #     print(row)
             print("end")
 
 parser = argparse.ArgumentParser(description="Option Critic PyTorch")
@@ -227,7 +226,7 @@ for type,num_option,folder in iteration:
     # # create the checkpoint
     if args.model is None:
         if type == "Option":
-            checkpoint = "logs_gpu/grouped-standard-longrun/Option-2/" + "_4000000_steps.zip"
+            checkpoint = "logs_gpu/grouped-standard-longrun/Option-4/" + "_5000000_steps.zip"
         else:
             # checkpoint = folder + "rl_model_1000000_steps"
             checkpoint = "logs_gpu/grouped-standard-longrun/DQN-cont-1mil-step/" + "rl_model_1200000_steps"
@@ -235,7 +234,7 @@ for type,num_option,folder in iteration:
         checkpoint = folder + args.model
     # load model and other stuff
     # if model zip is none, we use a harded model zip
-    if type == "Option" and num_option == 2:
+    if type == "Option" and num_option == 4:
         model = load_model(type, checkpoint, num_option)
         get_stats(args, model, type, num_option)
 # game_over      = False
